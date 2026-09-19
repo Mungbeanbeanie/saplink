@@ -1,0 +1,22 @@
+<title>Saplink</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/organic.css">
+<link rel="stylesheet" href="css/site.css">
+
+<div id="app">
+  <div id="header-slot"></div>
+  <main id="view"></main>
+</div>
+
+<!-- Load order: art + config, then one file per page, then the router. To add a page, add a
+     js/pages/<name>.js that registers Saplink.pages.<name>, list it here, and add its route in app.js. -->
+<script src="js/svg.js"></script>
+<script src="js/config.js"></script>
+<script src="js/store.js"></script>
+<script src="js/pages/landing.js"></script>
+<script src="js/pages/how.js"></script>
+<script src="js/pages/dashboard.js"></script>
+<script src="js/pages/account.js"></script>
+<script src="js/app.js"></script>
