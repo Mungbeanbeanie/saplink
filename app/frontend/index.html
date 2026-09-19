@@ -1,43 +1,16 @@
-<title>Saplink</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/organic.css">
-<link rel="stylesheet" href="css/site.css">
-
-<!-- Intro loader: plays once per browser session over the page while it loads. See js/loader.js. -->
-<div id="loader" class="loader" role="status" aria-label="Loading Saplink">
-  <video class="loader-video" muted autoplay playsinline preload="auto" poster="media/loader-poster.jpg">
-    <source src="media/saplink-puddle.webm" type="video/webm">
-    <source src="media/saplink-puddle.mp4" type="video/mp4">
-  </video>
-  <button type="button" class="btn btn-secondary btn-light loader-skip">Skip</button>
-</div>
-<script>
-  (function () {
-    var seen = false;
-    try { seen = sessionStorage.getItem('saplink.intro') === '1'; } catch (e) {}
-    var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var el = document.getElementById('loader');
-    if (seen || calm) el.parentNode.removeChild(el);
-    else document.documentElement.classList.add('is-loading');
-  })();
-</script>
-
-<div id="app">
-  <div id="header-slot"></div>
-  <main id="view"></main>
-</div>
-
-<!-- Load order: art + config, then one file per page, then the router. To add a page, add a
-     js/pages/<name>.js that registers Saplink.pages.<name>, list it here, and add its route in app.js. -->
-<script src="js/svg.js"></script>
-<script src="js/config.js"></script>
-<script src="js/store.js"></script>
-<script src="js/pages/landing.js"></script>
-<script src="js/pages/how.js"></script>
-<script src="js/pages/dashboard.js"></script>
-<script src="js/pages/account.js"></script>
-<script src="js/app.js"></script>
-<script src="js/mascot.js"></script>
-<script src="js/loader.js"></script>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Saplink — a Wi-Fi router for plants</title>
+    <link rel="stylesheet" href="/organic.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
