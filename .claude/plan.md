@@ -106,7 +106,7 @@ Discrete fires plus an ack state machine, driving the actuator. Phase 1's `packe
 - [x] `app/backend/test_ingest.py` — self-running asserts (`python test_ingest.py`; pytest optional): POST round-trips through history, bad token → 401, out-of-range → 422, `/api/readings/latest` returns the right sample.
 - [x] `app/backend/Dockerfile` — `python:3.12-slim`, installs `requirements.txt` only; source arrives via bind mount so code changes need no rebuild.
 - [x] `compose.api.yaml` / `compose.web.yaml` + `Caddyfile.api` / `Caddyfile.web` / `deploy.sh` at repo root — one compose file per box role, each with its own Caddy for automatic TLS. (Replaces the single `app/backend/docker-compose.yml`; no postgres container.)
-- [ ] Both Vultr instances provisioned, DNS pointed, `.env` written, first `docker compose up` green — see [Runbook > Remaining to first green demo](#remaining-to-first-green-demo) for the full infra checklist.
+- [x] Both Vultr instances provisioned, DNS pointed, `.env` written, first `docker compose up` green — see [Runbook > Remaining to first green demo](#remaining-to-first-green-demo) for the full infra checklist. (Web box serves a placeholder `dist/index.html` and runs `up -d caddy` only until Phase 6 adds `package.json`.)
 
 ---
 
@@ -142,23 +142,27 @@ Discrete fires plus an ack state machine, driving the actuator. Phase 1's `packe
                      └──────────────────────────────────────────────────┘
 ```
 
-| | role | host | repo path |
-|---|---|---|---|
-| `saplink-api` | FastAPI + SQLite + Caddy | `api.<domain>` | `/opt/saplink` |
-| `saplink-web` | Caddy static file server | `<domain>`, `www.<domain>` | `/opt/saplink` |
+| | role | host | IP | repo path |
+|---|---|---|---|---|
+| `saplink-api` | FastAPI + SQLite + Caddy | `api.saplink.us` | `64.177.47.93` | `/opt/saplink` |
+| `saplink-web` | Caddy static file server | `saplink.us`, `www.saplink.us` | `45.32.211.54` | `/opt/saplink` |
 
 Each box runs its own Caddy for TLS. Port 8000 is never exposed; only 80/443 are open on either box.
 
+Domain is `saplink.us` at **Porkbun**. Its default wildcard `CNAME *.saplink.us → pixie.porkbun.com` is left in place — exact-match A records win over a wildcard, so it never shadows `api.`/`www.`.
+
 ## Provisioning
 
-1. Two instances: **Ubuntu 24.04, Cloud Compute – Regular, 1 vCPU / 1 GB**, region **Dallas**. Attach `~/.ssh/hackrice_deploy.pub` at create time.
-2. **DNS first** — the only step with a wait in it. `A api → <API_IP>`, `A @ → <WEB_IP>`, `A www → <WEB_IP>`, lowest TTL available. Verify with `dig +short api.<domain>`.
-3. Both boxes: `curl -fsSL https://get.docker.com | sh`, then `ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable`.
-4. Both boxes: `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""`, add each as its own read-only GitHub deploy key (multiple keys per repo is fine; one key can't be reused across repos). Then `git clone git@github.com:Mungbeanbeanie/saplink.git /opt/saplink`.
-5. `/opt/saplink/.env`, gitignored, written by hand:
-   - **api box:** `SAPLINK_API_DOMAIN`, `SAPLINK_TOKEN` (random 32 hex), `SAPLINK_WEB_ORIGIN=https://<domain>,https://www.<domain>`
-   - **web box:** `SAPLINK_WEB_DOMAIN`
-6. Local `~/.ssh/config`: `Host saplink-api` / `Host saplink-web`, both `User root`, `IdentityFile ~/.ssh/hackrice_deploy`.
+**Both boxes are provisioned and green** (2026-09-19); steps below are the rebuild recipe. Actuals differ from the original plan where noted.
+
+1. Two instances: **Cloud Compute – Regular, 1 vCPU / 1 GB**, region **Dallas**. Attach `~/.ssh/hackrice_deploy.pub` at create time. (Built on **Ubuntu 26.04**, not 24.04 — Docker's convenience script handles it fine: Docker 29.8.1 / Compose v5.5.1.)
+2. **DNS first** — the only step with a wait in it. `A api → <API_IP>`, `A @ → <WEB_IP>`, `A www → <WEB_IP>`, lowest TTL available. Verify with `dig +short api.saplink.us`.
+3. Both boxes: `curl -fsSL https://get.docker.com | sh`, then `ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable`. Also `fallocate -l 1G /swapfile` + `mkswap`/`swapon` + an `/etc/fstab` line — 1 GB RAM with no swap OOM-kills the Phase 6 node build.
+4. Both boxes: `git clone https://github.com/Mungbeanbeanie/saplink.git /opt/saplink`. (The repo is **public**, so no GitHub deploy keys are needed. If it ever goes private: `ssh-keygen -t ed25519` per box, each pubkey added as its own read-only deploy key — multiple keys per repo is fine; one key can't be reused across repos.)
+5. `/opt/saplink/.env`, gitignored, `chmod 600`:
+   - **api box:** `SAPLINK_API_DOMAIN=api.saplink.us`, `SAPLINK_TOKEN` (`openssl rand -hex 32`), `SAPLINK_WEB_ORIGIN=https://saplink.us,https://www.saplink.us`
+   - **web box:** `SAPLINK_WEB_DOMAIN=saplink.us`
+6. Local `~/.ssh/config`: `Host saplink-api` / `Host saplink-web`, both `User root`, `IdentityFile ~/.ssh/hackrice_deploy`. Required by `deploy.sh`, which addresses the boxes only by those nicknames.
 
 ## Deploy
 
@@ -220,10 +224,12 @@ Healthy monitor output: `wifi ok <ip>` then a repeating `POST 200 seq=N`.
 
 ## Remaining to first green demo
 
-- [ ] Two Vultr instances provisioned; DNS resolving
-- [ ] Docker + ufw on both; repo cloned; `.env` written on each
-- [ ] `https://<domain>` and `https://api.<domain>/api/health` both green, valid certs
-- [ ] `curl` POST to `/api/readings` round-trips through `/api/readings/history`; bad token → 401
-- [ ] `include/secrets.h` filled in with the real domain + token
+- [x] Two Vultr instances provisioned; DNS resolving
+- [x] Docker + ufw on both; repo cloned; `.env` written on each
+- [x] `https://saplink.us` and `https://api.saplink.us/api/health` both green, valid certs (Let's Encrypt, expire 2026-12-18)
+- [x] `curl` POST to `/api/readings` round-trips through `/api/readings/history`; bad token → 401
+- [x] `include/secrets.h` filled in with the real domain + token (Wi-Fi SSID/pass still placeholder — fill at the venue)
 - [ ] ESP32 flashed (`pio run -e combo -t upload`) → monitor shows `wifi ok` + `POST 200`
-- [ ] `./deploy.sh` ships a change end to end
+- [x] `./deploy.sh api` ships a change end to end. **`./deploy.sh web` still fails** — it runs the `build` service, and there is no `app/frontend/package.json` until Phase 6. Until then the web box runs `docker compose -f compose.web.yaml up -d caddy` over a hand-written placeholder `app/frontend/dist/index.html`.
+
+Body validation runs *before* the token check (FastAPI parses the body during dependency solving, and auth is an inline header param in the handler), so a malformed body returns 422 even with no token. Only the schema shape leaks; writes still require the token. Move auth to a `Depends()` if that ordering ever matters.
