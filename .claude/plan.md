@@ -1,7 +1,7 @@
 # Build Plan
 
 - Checklist, worked top-to-bottom. Each item is exactly one file with a single responsibility — `stage`/`apply` should be able to touch one checklist item without needing to also change any other file. Phases are ordered by dependency (later phases consume earlier ones).
-- Phases 1–4 are firmware, 5 the backend, 6 the frontend. The **Runbook** at the bottom is the operational half: topology, deploy commands, and the gotchas that bite on demo day.
+- Phases 1–4 are firmware, 5 the backend, 6 the frontend, 7 backend Google Sign-In. The **Runbook** at the bottom is the operational half: topology, deploy commands, and the gotchas that bite on demo day.
 
 ---
 
@@ -124,6 +124,25 @@ Discrete fires plus an ack state machine, driving the actuator. Phase 1's `packe
 
 ---
 
+## Phase 7: Google Sign-In (backend)
+
+- Consumes Phase 5's `main.py`; placed last so no earlier phase's numbering moves. **Backend half only** — the Google Identity Services button that mints the ID token is a Phase 6 `App.jsx` concern and is *not* in this phase.
+- **No OAuth code flow, no users table, no server sessions, no cookies, no JWT of our own.** The browser gets a Google ID token (a JWT) from GIS and sends it as `Authorization: Bearer <id_token>`; the backend verifies the signature per request and reads `email` out of it. That is the entire mechanism.
+- **Separate from the device token.** The ESP32's `SAPLINK_TOKEN` path (`_auth()` on `POST /api/readings`) is untouched — two different callers, two different credentials, do not merge the checks.
+- **What gets gated:** browser-initiated *writes* only — `POST /api/alerts/manual` (Phase 5's alert plane). `GET /api/readings/*` and `/api/health` stay public so the live chart can never die on stage behind an auth failure. Revisit if the dashboard is ever exposed to people who shouldn't see the stream.
+
+- [ ] `app/backend/requirements.txt` gains `google-auth` — brings `google.oauth2.id_token.verify_oauth2_token`, which does signature verification, `aud`/`iss` checks, expiry, and Google's cert fetch+cache in one call. (Not `authlib`/`google-auth-oauthlib`/`python-jose` — those are for the redirect-based code flow, which is not being used. Unpinned, matching the rest of the file.)
+- [ ] `app/backend/main.py` — three additions, all in the existing file: (1) `GOOGLE_CLIENT_ID` + `SAPLINK_ALLOWED_EMAILS` read from env at module top, next to `TOKEN`; (2) `_google_user(authorization)` — strips `Bearer `, calls `id_token.verify_oauth2_token(tok, google.auth.transport.requests.Request(), GOOGLE_CLIENT_ID)`, raises 401 on `ValueError`, raises 403 if `SAPLINK_ALLOWED_EMAILS` is non-empty and the token's `email` isn't in it, returns the email; (3) `GET /api/auth/me` → `{"email": ...}`, so the frontend can validate a token once and render "signed in as X". Then hang `_google_user` off `POST /api/alerts/manual` when that route lands. (Empty `SAPLINK_ALLOWED_EMAILS` = any Google account passes — fine for a demo, it still proves a real identity. Set it to the team's addresses before the dashboard is shared.)
+- [ ] `app/backend/test_ingest.py` gains two asserts — garbage token → 401, and `/api/readings/history` still answers with no `Authorization` header at all (guards against accidentally gating reads). Verifying a *real* token in a test would need a live Google round-trip; skipped, monkeypatch `verify_oauth2_token` only if the happy path ever regresses.
+
+Gotchas, in the order they bite:
+- **`GOOGLE_CLIENT_ID` must be the Web application OAuth client**, created at console.cloud.google.com → APIs & Services → Credentials, with `https://saplink.us` and `https://www.saplink.us` under *Authorized JavaScript origins*. No redirect URI is needed — GIS uses the origin. Same client id on both the frontend button and the backend `aud` check, or every token fails verification.
+- **Google ID tokens expire in ~1 hour.** No refresh handling is planned; GIS re-prompts and the frontend just sends the new one.
+- **`allow_headers=["*"]` in the existing CORS block already permits `Authorization`** — no CORS change needed. The web origins list already covers both `saplink.us` and `www.`.
+- **The API box's clock matters** — JWT `exp`/`iat` validation fails on a drifted clock. Vultr's Ubuntu image runs `systemd-timesyncd` by default; check `timedatectl` if verification mysteriously 401s.
+
+---
+
 # Runbook
 
 ## Topology
@@ -160,7 +179,7 @@ Domain is `saplink.us` at **Porkbun**. Its default wildcard `CNAME *.saplink.us 
 3. Both boxes: `curl -fsSL https://get.docker.com | sh`, then `ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable`. Also `fallocate -l 1G /swapfile` + `mkswap`/`swapon` + an `/etc/fstab` line — 1 GB RAM with no swap OOM-kills the Phase 6 node build.
 4. Both boxes: `git clone https://github.com/Mungbeanbeanie/saplink.git /opt/saplink`. (The repo is **public**, so no GitHub deploy keys are needed. If it ever goes private: `ssh-keygen -t ed25519` per box, each pubkey added as its own read-only deploy key — multiple keys per repo is fine; one key can't be reused across repos.)
 5. `/opt/saplink/.env`, gitignored, `chmod 600`:
-   - **api box:** `SAPLINK_API_DOMAIN=api.saplink.us`, `SAPLINK_TOKEN` (`openssl rand -hex 32`), `SAPLINK_WEB_ORIGIN=https://saplink.us,https://www.saplink.us`
+   - **api box:** `SAPLINK_API_DOMAIN=api.saplink.us`, `SAPLINK_TOKEN` (`openssl rand -hex 32`), `SAPLINK_WEB_ORIGIN=https://saplink.us,https://www.saplink.us`, and once Phase 7 lands `GOOGLE_CLIENT_ID` (+ optional `SAPLINK_ALLOWED_EMAILS`, CSV; empty = any Google account)
    - **web box:** `SAPLINK_WEB_DOMAIN=saplink.us`
 6. Local `~/.ssh/config`: `Host saplink-api` / `Host saplink-web`, both `User root`, `IdentityFile ~/.ssh/hackrice_deploy`. Required by `deploy.sh`, which addresses the boxes only by those nicknames.
 
