@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <cmath>
+
 #include "peak_detector.h"
 #include "recorded_signal.h"
 #include "signal_conditioning.h"
@@ -109,6 +111,66 @@ void test_deflection_on_top_of_offset_fires() {
   TEST_ASSERT_TRUE(fired);
 }
 
+// The alert's voltage_mv must be the deflection that actually fired, and
+// threshold_mv the bar it cleared -- so voltage >= threshold, always. This
+// failed on hardware (voltage_mv 4.128 against threshold_mv 4.964) because the
+// caller scanned only the current 32-sample batch for a maximum, while the
+// detector tracks a deflection ACROSS batches. A VP that straddles the
+// boundary put its real peak in the previous batch, out of the caller's reach.
+void test_peak_reported_when_vp_straddles_batch_boundary() {
+  SignalConditioner cond;
+  PeakDetector det;
+  RecordedSignalPlayer player;
+
+  for (int i = 0; i < 200; i++) cond.update(30.0f);
+
+  const int kBatchN = 32;  // matches combo_main.cpp
+  // Start the VP 20 samples into a batch. Its peak then lands at ~sample 30
+  // (batch 0) while the rebound only confirms at ~sample 41 (batch 1) -- so the
+  // batch that DETECTS the spike is not the batch that contains its peak. That
+  // offset is the whole point; without it the waveform fires inside one batch
+  // and the bug is invisible.
+  const int kOffsetIntoBatch = 20;
+
+  bool fired = false;
+  float sample;
+  int n = 0;
+  float batch_max = 0.0f;
+  bool triggered = false;
+
+  while (n < kBatchN * 3) {
+    if (n == kOffsetIntoBatch) {
+      player.trigger();
+      triggered = true;
+    }
+    float v = 30.0f;
+    if (triggered && player.nextSample(sample)) v += sample;
+    cond.update(v);
+
+    // Reset per batch, exactly as the old per-batch scan in combo_main did.
+    if (n % kBatchN == 0) batch_max = 0.0f;
+    if (std::fabs(cond.deviation()) > std::fabs(batch_max)) batch_max = cond.deviation();
+    n++;
+
+    if (det.check(cond.deviation(), cond.sigma())) {
+      fired = true;
+      TEST_ASSERT_TRUE_MESSAGE(n > kBatchN,
+                               "fixture must straddle a batch boundary to be a regression test");
+      // The invariant that broke in production.
+      TEST_ASSERT_TRUE_MESSAGE(
+          std::fabs(det.lastPeak()) >= det.lastThreshold(),
+          "reported peak must clear the threshold it was judged against");
+      // And the old approach must genuinely have been wrong here, otherwise
+      // this test would pass even with the bug still in place.
+      TEST_ASSERT_TRUE_MESSAGE(
+          std::fabs(det.lastPeak()) > std::fabs(batch_max),
+          "per-batch scan should under-report -- fixture no longer exercises the bug");
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(fired);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_noise_only_does_not_fire);
@@ -117,5 +179,6 @@ int main(int argc, char **argv) {
   RUN_TEST(test_sigma_floors_above_zero);
   RUN_TEST(test_warmup_suppresses_detection);
   RUN_TEST(test_deflection_on_top_of_offset_fires);
+  RUN_TEST(test_peak_reported_when_vp_straddles_batch_boundary);
   return UNITY_END();
 }

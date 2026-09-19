@@ -10,6 +10,9 @@ bool PeakDetector::check(float conditioned_mv, float baseline_sigma) {
     case State::kIdle:
       if (mag > threshold) {
         peak_mv_ = conditioned_mv;
+        // Stash the bar this deflection was actually judged against; sigma
+        // moves before the rebound confirms, several samples later.
+        threshold_mv_ = threshold;
         state_ = State::kDeflecting;
       }
       break;
@@ -32,6 +35,10 @@ bool PeakDetector::check(float conditioned_mv, float baseline_sigma) {
       }
       const float rebound_ratio = (std::fabs(peak_mv_) - mag) / std::fabs(peak_mv_);
       if (rebound_ratio >= 0.30f) {
+        // Publish before clearing -- peak_mv_ is the only record of what fired,
+        // and the line below destroys it.
+        last_peak_mv_ = peak_mv_;
+        last_threshold_mv_ = threshold_mv_;
         state_ = State::kIdle;
         peak_mv_ = 0.0f;
         return true;

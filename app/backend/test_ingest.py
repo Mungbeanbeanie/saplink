@@ -81,6 +81,120 @@ def test_soil_mv_roundtrip():
     assert all(x["soil_mv"] == 2221 for x in s), s
 
 
+def alert(**kw):
+    a = {"node_id": 1, "event_type": "VP_SPIKE", "voltage_mv": 42.0,
+         "threshold_mv": 0.093, "timestamp_ms": 12345}
+    return {**a, **kw}
+
+
+def _drain():
+    """Ack whatever is pending so each alert test starts from an empty queue."""
+    while True:
+        r = c.get("/api/alerts/pending", headers=AUTH)
+        if r.status_code == 404:
+            return
+        c.post(f"/api/alerts/{r.json()['id']}/ack", headers=AUTH)
+
+
+def test_alert_roundtrip():
+    _drain()
+    aid = c.post("/api/alerts", json=alert(), headers=AUTH).json()["id"]
+    got = [a for a in c.get("/api/alerts").json()["alerts"] if a["id"] == aid]
+    assert len(got) == 1, got
+    assert got[0]["event_type"] == "VP_SPIKE" and got[0]["node_id"] == 1, got[0]
+    # threshold_mv is measured on the board, not a placeholder -- it must survive
+    assert got[0]["threshold_mv"] == 0.093, got[0]
+
+
+def test_alert_bad_token():
+    assert c.post("/api/alerts", json=alert(), headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert c.post("/api/alerts", json=alert()).status_code == 401
+
+
+def test_alert_bad_event_type():
+    assert c.post("/api/alerts", json=alert(event_type="LEAF_WIGGLE"), headers=AUTH).status_code == 422
+    assert c.post("/api/alerts", json=alert(node_id=999), headers=AUTH).status_code == 422
+
+
+def test_replay_trigger_event_type():
+    # serial 'r' posts REPLAY_TRIGGER, a real stimulus posts VP_SPIKE -- both
+    # must survive the round trip or an injected event looks real on the dashboard
+    _drain()
+    aid = c.post("/api/alerts", json=alert(event_type="REPLAY_TRIGGER"), headers=AUTH).json()["id"]
+    got = next(a for a in c.get("/api/alerts").json()["alerts"] if a["id"] == aid)
+    assert got["event_type"] == "REPLAY_TRIGGER", got
+
+
+def test_pending_then_ack():
+    _drain()
+    aid = c.post("/api/alerts", json=alert(), headers=AUTH).json()["id"]
+    p = c.get("/api/alerts/pending", headers=AUTH)
+    assert p.status_code == 200 and p.json()["id"] == aid, p.text
+    assert c.post(f"/api/alerts/{aid}/ack", headers=AUTH).status_code == 200
+    # 404, not 200-with-null: pollPendingAlert treats any non-200 as "nothing"
+    assert c.get("/api/alerts/pending", headers=AUTH).status_code == 404
+    # acking twice must not resurrect it
+    assert c.post(f"/api/alerts/{aid}/ack", headers=AUTH).status_code == 404
+
+
+def test_alert_dedupe_while_unacked():
+    # The guard that stops a noisy electrode queueing doses the pump delivers
+    # back to back. Second POST returns the FIRST id and inserts nothing.
+    _drain()
+    first = c.post("/api/alerts", json=alert(), headers=AUTH).json()["id"]
+    before = len(c.get("/api/alerts").json()["alerts"])
+    second = c.post("/api/alerts", json=alert(voltage_mv=99.0), headers=AUTH).json()["id"]
+    assert second == first, (first, second)
+    assert len(c.get("/api/alerts").json()["alerts"]) == before
+
+
+def test_alert_reads_stay_public():
+    assert c.get("/api/alerts").status_code == 200
+    # ...but the pump-adjacent routes do not
+    assert c.get("/api/alerts/pending").status_code == 401
+
+
+def test_replay_flag_roundtrip():
+    r = c.post("/api/readings", json=batch(seq=20, replay=True), headers=AUTH)
+    bid = r.json()["id"]
+    s = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()["samples"]
+    assert all(x["replay"] is True for x in s), s
+    # default stays False for firmware that predates the field
+    r = c.post("/api/readings", json=batch(seq=21), headers=AUTH)
+    bid = r.json()["id"]
+    s = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()["samples"]
+    assert all(x["replay"] is False for x in s), s
+
+
+def test_raw_mv_roundtrip():
+    r = c.post("/api/readings", json=batch(seq=22, mv=[1.0, 2.0, 3.0],
+                                           raw_mv=[31.0, 32.0, 33.0]), headers=AUTH)
+    bid = r.json()["id"]
+    s = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()["samples"]
+    # paired per-sample with mv, not collapsed onto the batch
+    assert [x["raw_mv"] for x in s] == [31.0, 32.0, 33.0], s
+    assert [x["mv"] for x in s] == [1.0, 2.0, 3.0], s
+
+
+def test_raw_mv_optional():
+    r = c.post("/api/readings", json=batch(seq=23), headers=AUTH)
+    bid = r.json()["id"]
+    s = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()["samples"]
+    assert all(x["raw_mv"] is None for x in s), s
+
+
+def test_raw_mv_short_does_not_misalign():
+    # A truncated raw array must yield None, never sample i paired with some
+    # other sample's raw value. Must not 422 either -- a live board mid-demo
+    # keeps ingesting.
+    r = c.post("/api/readings", json=batch(seq=24, mv=[1.0, 2.0, 3.0],
+                                           raw_mv=[31.0]), headers=AUTH)
+    assert r.status_code == 200, r.text
+    bid = r.json()["id"]
+    s = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()["samples"]
+    assert [x["raw_mv"] for x in s] == [31.0, None, None], s
+
+
 def test_soil_mv_optional():
     # Firmware built before soil_mv existed must keep ingesting -- that is the
     # whole reason the field is optional rather than a contract change. Every
