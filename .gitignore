@@ -16,3 +16,7 @@ secrets.h
 *.db
 *.db-wal
 *.db-shm
+
+app/frontend/package-lock.json
+
+app/frontend/package.json
