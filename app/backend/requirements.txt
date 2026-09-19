@@ -1,0 +1,3 @@
+fastapi
+uvicorn[standard]
+httpx   # TestClient only; harmless in the image
