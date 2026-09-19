@@ -146,10 +146,10 @@
       .then(ingest, mock);
   }
   function ingest(d) {
-    var rows = (d && d.readings) || [];
-    if (rows.length) lastId = rows[rows.length - 1].id;
+    var rows = (d && d.samples) || [];
+    if (d && d.last_id != null) lastId = d.last_id;
     var found = rows.filter(function (r) { return r.event === 'spike'; })
-      .map(function (r) { return { t: r.timestamp_ms, mv: r.mv, threshold: r.threshold_mv, base: r.baseline_mv, sim: r.src === 'sim' }; });
+      .map(function (r) { return { t: r.t_ms, mv: r.mv, threshold: r.threshold_mv, base: r.baseline_mv, sim: r.src === 'sim' }; });
     var last = rows[rows.length - 1];
     var patch = {
       live: true,

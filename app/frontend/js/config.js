@@ -2,12 +2,15 @@
 window.Saplink = window.Saplink || {};
 
 Saplink.config = {
-  // Where the monitoring backend lives. Empty = same origin. Endpoints used:
+  // Where the monitoring backend lives. saplink-web and saplink-api are two
+  // separate boxes/domains (see .claude/plan.md's Runbook) -- this can't be ''
+  // (same-origin), it has to name the API's own domain. Endpoints used:
   //   GET  /api/health                        -> { ok, devices[], batches, last_recv }
-  //   GET  /api/readings/history?since_id=N   -> { readings: [{ id, timestamp_ms, mv, event, seq, baseline_mv, threshold_mv, src }] }
-  //   POST /api/alerts/manual                 -> sends a test signal
+  //   GET  /api/readings/history?since_id=N   -> { last_id, samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src, soil_mv, seq }] }
+  //     (no threshold_mv yet -- that's a Contract B/alerts concept, Phase 5, unbuilt)
+  //   POST /api/alerts/manual                 -> sends a test signal (Phase 5, unbuilt -- 404s gracefully today)
   // When these are not reachable the pages fall back to a simulated preview feed.
-  apiBase: '',
+  apiBase: 'https://api.saplink.us',
 
   // Landing-page canopy scene.
   scene: {

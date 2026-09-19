@@ -108,7 +108,7 @@ Cloud infrastructure is 2 Vultr instances (`saplink-api`, `saplink-web`) — not
 
 Steps below describe the primary single-plant/combo-board demo as intended; items marked NOT YET BUILT are open work, not already-working behavior.
 
-1. **Baseline Verification:** Show Plant A's live baseline voltage stream via the dashboard (`app/frontend/index.html`, still to be built) polling `GET /samples` from `saplink-api`. Today, the same ingestion can be demonstrated directly with `curl`/`GET /samples`, since the dashboard HTML doesn't exist yet — the pipeline underneath is already live. (stretch: also show Plant B and the Control Plant.)
+1. **Baseline Verification:** Show Plant A's live baseline voltage stream via the dashboard (`app/frontend/`, built — see `plan.md` Phase 6) polling `GET /api/readings/history` from `saplink-api`. The same ingestion can also be demonstrated directly with `curl`/`GET /api/readings/history`. (stretch: also show Plant B and the Control Plant.)
 2. **Stress Application:** Apply a real localized stimulus (leaf pinch, cold shock, or saline dip) to Plant A, or arm `RecordedSignalPlayer`'s trigger to inject an artificial alert — Phase 2 work, not yet built.
 3. **Signal Capture & Routing:** Working today for raw ingestion: `sensor_main.cpp` batches readings and POSTs them to `saplink-api`'s `/ingest`. Peak detection (Phase 2, sets `event:"spike"` on a qualifying batch) and its wiring into `combo_main.cpp` are not yet built.
 4. **Actuation & Resource Provision:** **NOT YET IMPLEMENTED.** Blocked on both `combo_main.cpp` and the backend's still-undesigned pending-actuation mechanism (no ack/pending state exists today).

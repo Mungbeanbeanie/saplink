@@ -88,7 +88,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-COLS = "id,device,t_ms,period_ms,baseline_mv,event,src,mv,soil_mv"
+COLS = "id,device,t_ms,period_ms,baseline_mv,event,src,mv,soil_mv,seq"
 
 
 def _auth(authorization: Optional[str]) -> None:
@@ -146,13 +146,14 @@ def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
 
 
 def _flatten(row):
-    bid, device, t_ms, period_ms, baseline, event, src, mv, soil_mv = row
-    # soil_mv is per-batch, not per-sample, and rides along on each flattened
+    bid, device, t_ms, period_ms, baseline, event, src, mv, soil_mv, seq = row
+    # soil_mv/seq are per-batch, not per-sample, and ride along on each flattened
     # sample exactly as baseline_mv/event/src already do -- the dashboard reads
-    # whichever sample it is drawing and gets the batch context with it.
+    # whichever sample it is drawing and gets the batch context with it. seq
+    # lets it detect dropped batches (gaps in the per-sample seq sequence).
     return [{"batch_id": bid, "device": device, "t_ms": t_ms + i * period_ms,
              "mv": v, "baseline_mv": baseline, "event": event, "src": src,
-             "soil_mv": soil_mv}
+             "soil_mv": soil_mv, "seq": seq}
             for i, v in enumerate(json.loads(mv))]
 
 

@@ -106,21 +106,35 @@ Discrete fires plus an ack state machine, driving the actuator. Phase 1's `packe
 - [x] `app/backend/test_ingest.py` — self-running asserts (`python test_ingest.py`; pytest optional): POST round-trips through history, bad token → 401, out-of-range → 422, `/api/readings/latest` returns the right sample.
 - [x] `app/backend/Dockerfile` — `python:3.12-slim`, installs `requirements.txt` only; source arrives via bind mount so code changes need no rebuild.
 - [x] `compose.api.yaml` / `compose.web.yaml` + `Caddyfile.api` / `Caddyfile.web` / `deploy.sh` at repo root — one compose file per box role, each with its own Caddy for automatic TLS. (Replaces the single `app/backend/docker-compose.yml`; no postgres container.)
-- [x] Both Vultr instances provisioned, DNS pointed, `.env` written, first `docker compose up` green — see [Runbook > Remaining to first green demo](#remaining-to-first-green-demo) for the full infra checklist. (Web box serves a placeholder `dist/index.html` and runs `up -d caddy` only until Phase 6 adds `package.json`.)
+- [x] Both Vultr instances provisioned, DNS pointed, `.env` written, first `docker compose up` green — see [Runbook > Remaining to first green demo](#remaining-to-first-green-demo) for the full infra checklist. (Web box now serves `app/frontend/` directly via Caddy — see Phase 6; no Vite build needed.)
 
 ---
 
-## Phase 6: Frontend Dashboard (React, standalone)
+## Phase 6: Frontend Dashboard (vanilla JS, standalone)
 
-- Last phase, consumes only Phase 5's API. Fully decoupled — no shared code with the backend beyond the schema shape, per user's "separate standalone" direction.
-- Served from the `saplink-web` box. **Caddy serves `app/frontend/dist/`**, not the source dir — a Vite project needs a build step, run on the box during `./deploy.sh web`.
+- Consumes only Phase 5's API (readings today; `/api/alerts/manual` once Phase 5 lands it). Fully decoupled — no shared code with the backend beyond the schema shape.
+- **DIVERGES from the originally-planned React/Vite/Tailwind SPA** (that plan's checklist is kept below for history). The frontend was imported already-built as a vanilla, hash-routed multi-page JS app — rebuilding an already-complete, already-designed site in React would be pure churn with no functional benefit. No build step, no npm, no node on the host.
+- Served from the `saplink-web` box. Caddy serves `app/frontend/` directly (see `compose.web.yaml`/`Caddyfile.web`) — no `dist/`, no build stage.
 
-- [ ] `app/frontend/package.json` — Node scaffold: `react`, `react-dom`, `vite`, `tailwindcss` + PostCSS/autoprefixer peers. Replaces the current bare `index.html` placeholder with an actual buildable project.
-- [ ] `app/frontend/index.html` — Vite entry HTML (`<div id="root">` + module script to `src/main.jsx`), replacing today's empty placeholder.
-- [ ] `app/frontend/src/main.jsx` — `ReactDOM.createRoot(...).render(<App />)`, imports Tailwind base CSS.
-- [ ] `app/frontend/src/App.jsx` — dashboard layout matching the Hackathon Demo Workflow: live baseline voltage panel(s) (from `GET /api/readings/history`), a VP-spike alert banner (from `GET /api/readings/latest`), an actuation-status indicator ("Target Network Node Primed"), and a manual replay-trigger button that calls `POST /api/alerts/manual`.
-- [ ] `app/frontend/src/lib/dataFeed.js` — `useReadings()` hook: polls the Vultr API's `/api/readings/latest` and `/api/readings/history` endpoints on an interval (base URL from a Vite env var, `VITE_API_BASE_URL`), returns current reading + rolling history array to `App.jsx`; also exposes a `postManualAlert()` call for the replay button.
-- [ ] `compose.web.yaml` gains a node build stage running `npm ci && npm run build`, and `Caddyfile.web` roots at `dist/`.
+- [x] `app/frontend/index.html` — shell markup: `#header-slot`/`#view` mount points, script tags in load order (art + config, then one file per page, then the router).
+- [x] `app/frontend/js/config.js` — `Saplink.config` (`apiBase`, `scene`, `roster`, `probes`) and `Saplink.api(path, opts)`, the one fetch helper every page uses.
+- [x] `app/frontend/js/app.js` — hash router + shell: sign-in state (local-only today, see gap below), header/nav render, route table (`#/`, `#/how-it-works`, `#/dashboard`, `#/account`).
+- [x] `app/frontend/js/store.js` — signal-history persistence: localStorage always, plus an artifact-hosted shared DB when available; feeds the dashboard's chart and CSV/JSON export.
+- [x] `app/frontend/js/svg.js` — extracted inline art (logo, Google button icon, landing-page diagrams).
+- [x] `app/frontend/js/pages/{landing,how,dashboard,account}.js` — one file per route. `dashboard.js` is the only one that talks to the live API (`/api/health`, `/api/readings/history`, `/api/alerts/manual`); the rest are static or `/api/health`-only.
+- [x] `app/frontend/css/{organic,site}.css` — styling, unchanged from import.
+
+**Wiring fix applied** (the frontend was imported already-built but not actually connected to the live backend): `config.js`'s `apiBase` was `''` (same-origin), which 404s given `saplink-web`/`saplink-api` are separate domains — set to `https://api.saplink.us`. `dashboard.js`'s `ingest()` read `d.readings`/`r.id`/`r.timestamp_ms`, none of which `main.py` returns (`{last_id, samples:[{batch_id,...,t_ms,...}]}`) — silently zero rows every poll, no error, so the chart never updated even against a healthy API. Fixed to read `d.samples`, use the response's `last_id` for polling continuity, and `r.t_ms`. `main.py` gained a `seq` field in `/api/readings/history`'s per-sample output (additive, mirrors how `soil_mv` already rides along) so the dashboard's existing dropped-batch completeness feature has real data. `compose.web.yaml`/`Caddyfile.web` dropped the Vite `build` service and now point Caddy straight at `app/frontend/`.
+
+**Known gaps, deliberately not fixed in this pass:**
+- No `threshold_mv` exists anywhere in Contract A — the dashboard's spike detail falls back to a hardcoded 70mV. Real per-event thresholds need Phase 5's backend classifier to exist and publish one.
+- The frontend's "Sign in" is 100% local (`localStorage` flag in `app.js`'s `S.auth`) — it never calls real Google Identity Services or the backend's already-built `/api/auth/me` (Phase 7). Not wired yet because there's nothing real to gate: Phase 7's `_google_user` is only meant to protect `POST /api/alerts/manual`, which is itself Phase 5 and unbuilt.
+
+Superseded original plan (React/Vite/Tailwind SPA, kept for history, not being built):
+- ~~`app/frontend/package.json` — Node scaffold: `react`, `react-dom`, `vite`, `tailwindcss` + PostCSS/autoprefixer peers.~~
+- ~~`app/frontend/src/main.jsx` — `ReactDOM.createRoot(...).render(<App />)`.~~
+- ~~`app/frontend/src/App.jsx` — dashboard layout: live baseline panel(s), a VP-spike alert banner, an actuation-status indicator, a manual replay-trigger button.~~
+- ~~`app/frontend/src/lib/dataFeed.js` — `useReadings()` hook polling `/api/readings/latest`/`/api/readings/history`.~~
 
 ---
 
@@ -249,6 +263,6 @@ Healthy monitor output: `wifi ok <ip>` then a repeating `POST 200 seq=N`.
 - [x] `curl` POST to `/api/readings` round-trips through `/api/readings/history`; bad token → 401
 - [x] `include/secrets.h` filled in with the real domain + token (Wi-Fi SSID/pass still placeholder — fill at the venue)
 - [ ] ESP32 flashed (`pio run -e combo -t upload`) → monitor shows `wifi ok` + `POST 200`
-- [x] `./deploy.sh api` ships a change end to end. **`./deploy.sh web` still fails** — it runs the `build` service, and there is no `app/frontend/package.json` until Phase 6. Until then the web box runs `docker compose -f compose.web.yaml up -d caddy` over a hand-written placeholder `app/frontend/dist/index.html`.
+- [x] `./deploy.sh api` ships a change end to end. `./deploy.sh web` now works too — `compose.web.yaml` dropped the Vite `build` service (the frontend has no npm project), Caddy serves `app/frontend/` directly.
 
 Body validation runs *before* the token check (FastAPI parses the body during dependency solving, and auth is an inline header param in the handler), so a malformed body returns 422 even with no token. Only the schema shape leaks; writes still require the token. Move auth to a `Depends()` if that ordering ever matters.

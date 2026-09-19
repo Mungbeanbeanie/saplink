@@ -56,9 +56,21 @@ Two independent Vultr boxes (`saplink-api`, `saplink-web`), each with its own Ca
 ## Frontend (`app/frontend/`)
 
 ```
-config.js    (leaf — defines `window.SAPLINK_API`, the one thing every page/script needs)
-index.html   --> config.js (script tag) + inline/plain JS fetch-polling logic; no build step, no npm, no React/Vite/Tailwind
+index.html              --> js/svg.js, js/config.js, js/store.js, js/pages/*.js, js/app.js (script tags, load order matters)
+css/organic.css          (leaf — base/reset + procedural canopy-scene styling)
+css/site.css             (leaf — page/component styling)
+
+js/svg.js                (leaf — extracted inline art: logo, Google icon, landing diagrams)
+js/config.js             (leaf — Saplink.config incl. apiBase, Saplink.api(path,opts) fetch helper, roster/probes fixtures)
+js/store.js             --> window.claude (optional artifact DB capability), localStorage   (signal-history persistence, feeds dashboard chart + CSV/JSON export)
+js/pages/landing.js     --> js/svg.js, js/config.js   (#/ route: canopy scene + health-pill polling /api/health)
+js/pages/how.js         --> js/config.js               (#/how-it-works route, static)
+js/pages/dashboard.js   --> js/config.js, js/store.js  (#/dashboard route — the only page hitting live readings: /api/health, /api/readings/history, /api/alerts/manual)
+js/pages/account.js     --> js/config.js               (#/account route, static fixture data)
+js/app.js               --> js/config.js, js/pages/*.js  (hash router + header/nav shell + local-only sign-in state)
 ```
+
+No build step, no npm, no React/Vite/Tailwind — this diverges from `plan.md`'s originally-planned React/Vite/Tailwind SPA (see that phase for why). `Saplink.config.apiBase` (in `js/config.js`) is the one thing every page needs, replacing the earlier planned `window.SAPLINK_API` global.
 
 ## Cross-cutting dependency (not a file import, a network contract)
 
