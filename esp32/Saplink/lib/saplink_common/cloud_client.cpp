@@ -1,5 +1,11 @@
 #include "cloud_client.h"
 
+// ponytail: Arduino-only TU. The native test env compiles every .cpp in this
+// library dir, and LDF gives no way to skip one file, so the guard lives here
+// rather than as a per-file exclude list in platformio.ini that rots the moment
+// a file is added.
+#ifdef ARDUINO
+
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
@@ -135,3 +141,5 @@ bool CloudClient::ackAlert(int alert_id) {
   http.end();
   return code >= 200 && code < 300;
 }
+
+#endif  // ARDUINO

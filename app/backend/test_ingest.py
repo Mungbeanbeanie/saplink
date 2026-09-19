@@ -8,6 +8,7 @@ import tempfile
 
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ["SAPLINK_TOKEN"] = "test-token"
+os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -56,6 +57,39 @@ def test_latest():
     assert body["sample"]["mv"] == 8.0, body
     assert body["sample"]["t_ms"] == 1100, body
     assert body["sample"]["event"] == "spike", body
+
+
+def test_google_garbage_token():
+    # NEEDS NETWORK: google-auth fetches Google's certs before parsing, so
+    # offline this is 503 ("can't check") rather than 401 ("token is bad").
+    assert c.get("/api/auth/me", headers={"Authorization": "Bearer garbage"}).status_code == 401
+    assert c.get("/api/auth/me").status_code == 401
+
+
+def test_reads_stay_public():
+    # guards against accidentally gating the live chart behind auth
+    assert c.get("/api/readings/history").status_code == 200
+    assert c.get("/api/health").status_code == 200
+
+
+def test_soil_mv_roundtrip():
+    r = c.post("/api/readings", json=batch(seq=11, soil_mv=2221), headers=AUTH)
+    assert r.status_code == 200, r.text
+    bid = r.json()["id"]
+    s = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()["samples"]
+    # per-batch value, repeated onto every flattened sample like baseline_mv
+    assert all(x["soil_mv"] == 2221 for x in s), s
+
+
+def test_soil_mv_optional():
+    # Firmware built before soil_mv existed must keep ingesting -- that is the
+    # whole reason the field is optional rather than a contract change. Every
+    # other test posts without it; this one asserts that on purpose.
+    r = c.post("/api/readings", json=batch(seq=12), headers=AUTH)
+    assert r.status_code == 200, r.text
+    bid = r.json()["id"]
+    s = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()["samples"]
+    assert all(x["soil_mv"] is None for x in s), s
 
 
 if __name__ == "__main__":

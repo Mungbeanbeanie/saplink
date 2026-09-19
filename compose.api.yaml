@@ -11,6 +11,11 @@ services:
     environment:
       SAPLINK_TOKEN: ${SAPLINK_TOKEN:?set SAPLINK_TOKEN in .env}
       SAPLINK_WEB_ORIGIN: ${SAPLINK_WEB_ORIGIN:?set SAPLINK_WEB_ORIGIN in .env}
+      # Soft defaults (:- not :?) on purpose -- a git pull that lands before
+      # .env is edited must not refuse to start the stack. Unset just 503s
+      # /api/auth/me; readings ingestion keeps running.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SAPLINK_ALLOWED_EMAILS: ${SAPLINK_ALLOWED_EMAILS:-}
       DB_PATH: /data/saplink.db
     restart: unless-stopped
     # deliberately no `ports:` -- only Caddy reaches this, over the compose network
