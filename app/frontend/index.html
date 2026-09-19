@@ -5,6 +5,25 @@
 <link rel="stylesheet" href="css/organic.css">
 <link rel="stylesheet" href="css/site.css">
 
+<!-- Intro loader: plays once per browser session over the page while it loads. See js/loader.js. -->
+<div id="loader" class="loader" role="status" aria-label="Loading Saplink">
+  <video class="loader-video" muted autoplay playsinline preload="auto" poster="media/loader-poster.jpg">
+    <source src="media/saplink-puddle.webm" type="video/webm">
+    <source src="media/saplink-puddle.mp4" type="video/mp4">
+  </video>
+  <button type="button" class="btn btn-secondary btn-light loader-skip">Skip</button>
+</div>
+<script>
+  (function () {
+    var seen = false;
+    try { seen = sessionStorage.getItem('saplink.intro') === '1'; } catch (e) {}
+    var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var el = document.getElementById('loader');
+    if (seen || calm) el.parentNode.removeChild(el);
+    else document.documentElement.classList.add('is-loading');
+  })();
+</script>
+
 <div id="app">
   <div id="header-slot"></div>
   <main id="view"></main>
@@ -20,3 +39,4 @@
 <script src="js/pages/dashboard.js"></script>
 <script src="js/pages/account.js"></script>
 <script src="js/app.js"></script>
+<script src="js/loader.js"></script>
