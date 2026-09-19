@@ -7,3 +7,12 @@
 saplink.code-workspace
 
 .venv
+__pycache__/
+*.pyc
+
+# secrets + local state -- never commit
+secrets.h
+.env
+*.db
+*.db-wal
+*.db-shm

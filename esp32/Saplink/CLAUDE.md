@@ -82,20 +82,27 @@ Bounds enforced by Pydantic: `device` ≤32 chars, `period_ms` 1–60000, `mv` �
 
 ```
 esp32/Saplink/
-  src/main.cpp            wifi + synthetic samples + HTTPS POST
-  src/i2c_probe.cpp       hardware debugger, separate build env
+  src/sensor_main.cpp     wifi + synthetic samples + HTTPS POST   <- the cloud leg
+  src/diagnostic_main.cpp I2C hardware debugger
+  src/actuator_main.cpp   (teammate, not written yet)
+  src/combo_main.cpp      (teammate, not written yet)
   include/secrets.h       GITIGNORED — copy from secrets.h.example
   include/secrets.h.example
 ```
 
+One env per `*_main.cpp` in `platformio.ini`, selected by `build_src_filter` —
+they each define `setup()`/`loop()`, so exactly one builds at a time.
+
 ### Build / flash
 
-`pio` is not on PATH:
+`pio` is not on PATH, and there is **no default env** — always pass `-e`, or
+PlatformIO tries to build every env including the ones whose source files don't
+exist yet:
 
 ```sh
 alias pio=~/.platformio/penv/bin/pio
-pio run -t upload && pio device monitor     # the real firmware
-pio run -e i2cprobe -t upload               # the I2C scanner instead
+pio run -e sensor -t upload && pio device monitor   # the cloud-leg firmware
+pio run -e diagnostic -t upload                     # the I2C scanner instead
 ```
 
 Healthy monitor output: `wifi ok <ip>` then a repeating `POST 200 seq=N`.
@@ -107,12 +114,12 @@ Copy `include/secrets.h.example` → `include/secrets.h` and fill in. Never comm
 
 ### The seam
 
-`readMv()` in `src/main.cpp` is the **only** thing that changes when the ADS1115 is wired: replace the
-body with a real read and flip `SRC` to `"ads1115"`. Nothing else in the file moves. Today it returns
+`readMv()` in `src/sensor_main.cpp` is the **only** thing that changes when the ADS1115 is wired: replace
+the body with a real read and flip `SRC` to `"ads1115"`. Nothing else in the file moves. Today it returns
 slow baseline wander plus a spike every ~20 s, so the dashboard sees a realistic shape, not a flat line.
 
-`src/i2c_probe.cpp` is the original I2C diagnostic — pull-up detection, pin capacitance sweep, address
-scan at two bus speeds. Use it the day the ADC shows up and doesn't ACK at 0x48.
+`src/diagnostic_main.cpp` is the original I2C diagnostic — pull-up detection, pin capacitance sweep,
+address scan at two bus speeds. Use it the day the ADC shows up and doesn't ACK at 0x48.
 
 ### TLS
 
@@ -164,17 +171,19 @@ docker compose -f compose.api.yaml logs -f api      # backend logs
 
 ## Checklist
 
-- [ ] `app/backend/main.py` — routes at `/ingest` `/samples` `/events` `/health`, CORS from `SAPLINK_WEB_ORIGIN`
-- [ ] `app/backend/test_ingest.py` passes: `.venv/bin/python app/backend/test_ingest.py`
+- [x] `app/backend/main.py` — routes at `/ingest` `/samples` `/events` `/health`, CORS from `SAPLINK_WEB_ORIGIN`
+- [x] `app/backend/test_ingest.py` passes: `.venv/bin/python app/backend/test_ingest.py`
+- [x] `Caddyfile.api` / `Caddyfile.web`, `compose.api.yaml` / `compose.web.yaml`, `deploy.sh`
+- [x] `app/frontend/config.js` exposes `window.SAPLINK_API`
 - [ ] Two Vultr instances provisioned (Ubuntu 24.04, 1 vCPU / 1 GB, Dallas)
 - [ ] DNS: `api` → API IP, `@` and `www` → web IP; both resolve
 - [ ] Docker + ufw (22/80/443) on both boxes; repo cloned to `/opt/saplink`; `.env` written
-- [ ] `Caddyfile.api` / `Caddyfile.web`, `compose.api.yaml` / `compose.web.yaml`, `deploy.sh`
-- [ ] `app/frontend/config.js` exposes `window.SAPLINK_API`
+- [ ] Point `config.js` and `secrets.h` at the real domain
 - [ ] `https://<domain>` and `https://api.<domain>/health` both green, valid certs
 - [ ] `curl` POST to `/ingest` round-trips through `/samples`; bad token → 401
-- [ ] Firmware: `src/main.cpp` rewritten, `src/i2c_probe.cpp` preserved, `platformio.ini` two envs
-- [ ] ESP32 flashed → monitor shows `wifi ok` + `POST 200`; rows visible via `/samples`
+- [x] Firmware: `src/sensor_main.cpp` written, `src/diagnostic_main.cpp` preserved verbatim
+- [ ] `include/secrets.h` filled in from the example
+- [ ] ESP32 flashed (`pio run -e sensor -t upload`) → monitor shows `wifi ok` + `POST 200`
 - [ ] `./deploy.sh` ships a change end to end
 
 ## Out of scope — for teammates

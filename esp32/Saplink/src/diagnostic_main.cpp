@@ -1,108 +1,121 @@
 #include <Arduino.h>
-#include <HTTPClient.h>
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
+#include <Wire.h>
 
-#include "secrets.h"
+// ponytail: I2C bus check. GPIO21 = SDA, GPIO22 = SCL (esp32dev defaults).
+#define SDA_PIN 21
+#define SCL_PIN 22
 
-// 10 Hz into a 32-sample buffer -> one POST every ~3.2s.
-static const uint32_t PERIOD_MS = 100;
-static const size_t BATCH_N = 32;
-
-// "sim" until an ADC is actually wired. The backend records this, so on stage
-// you can always tell a live trace from a synthetic one.
-static const char *SRC = "sim";
-
-static float buf[BATCH_N];
-static uint32_t seq = 0;
-
-// THE SEAM. Nothing is wired to this board yet, so this returns a synthetic
-// trace: slow baseline wander plus a spike every ~20s, which gives the
-// dashboard a realistic shape instead of a flat line. When the ADS1115 is
-// connected, replace this body with a real differential read and set SRC to
-// "ads1115" -- nothing else in this file changes.
-static float readMv(uint32_t n) {
-  float wander = 3.0f * sinf(n * 0.004f);
-  float spike = (n % 200) < 8 ? 45.0f : 0.0f;
-  float noise = 0.4f * (random(-100, 101) / 100.0f);
-  return wander + spike + noise;
+// A floating ESP32 input holds the charge from whatever last drove it, so a
+// plain read reports phantom HIGHs. Drive the pin LOW, release it, then read:
+// only a real external pull-up can bring it back up.
+static bool pulledUpExternally(uint8_t pin) {
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+  delayMicroseconds(100);
+  pinMode(pin, INPUT);
+  delayMicroseconds(50);
+  return digitalRead(pin);
 }
 
-static bool wifiUp() {
-  if (WiFi.status() == WL_CONNECTED) return true;
-  Serial.printf("wifi: connecting to %s\n", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(250);
-  if (WiFi.status() != WL_CONNECTED) {
-    // Don't block forever -- a board that can't find the network should say so
-    // and keep retrying, not sit silent.
-    Serial.printf("wifi: FAILED (status=%d), retrying\n", WiFi.status());
-    return false;
+// Rise time under the internal pull-up, in CPU cycles (240MHz -> ~4ns each).
+// A bare pin has only its own few pF and snaps up; jumpers plus a module's
+// input capacitance measurably slow it. Comparing a suspect pin against a
+// known-empty one says whether anything is physically attached.
+static uint32_t riseCycles(uint8_t pin) {
+  const bool hi = pin >= 32;  // pins 32+ live in the second register bank
+  const uint32_t mask = 1UL << (hi ? pin - 32 : pin);
+  pinMode(pin, INPUT_PULLUP);  // pull-up stays set in the IO mux below
+  uint32_t total = 0;
+  const int trials = 32;
+  for (int i = 0; i < trials; i++) {
+    if (hi) {
+      GPIO.out1_w1tc.val = mask;     // drive low...
+      GPIO.enable1_w1ts.val = mask;  // ...by enabling the output driver
+    } else {
+      GPIO.out_w1tc = mask;
+      GPIO.enable_w1ts = mask;
+    }
+    delayMicroseconds(200);
+    noInterrupts();
+    uint32_t t0 = ESP.getCycleCount();
+    // release in a single write; the pull-up takes over from here
+    if (hi) GPIO.enable1_w1tc.val = mask;
+    else GPIO.enable_w1tc = mask;
+    while (ESP.getCycleCount() - t0 < 240000) {
+      if ((hi ? GPIO.in1.val : GPIO.in) & mask) break;
+    }
+    total += ESP.getCycleCount() - t0;
+    interrupts();
   }
-  Serial.print("wifi ok ");
-  Serial.println(WiFi.localIP());
-  return true;
+  return total / trials;
 }
 
-static void post(uint32_t t_ms) {
-  float sum = 0;
-  for (size_t i = 0; i < BATCH_N; i++) sum += buf[i];
+static void capacitanceProbe() {
+  // 18/19/23 are non-RTC like 21/22 and assumed bare: the "nothing attached"
+  // baseline. Jumpers plus a module add capacitance and slow the rise.
+  // GPIO2 drives the onboard LED, so it is a known-loaded positive control:
+  // if it does not read slower than the bare pins, this probe proves nothing.
+  const uint8_t pins[] = {SDA_PIN, SCL_PIN, 18, 19, 23, 2};
+  Serial.print("rise cycles:");
+  for (uint8_t p : pins) Serial.printf("  GPIO%u=%lu", p, riseCycles(p));
+  Serial.println("   (18/19/23 = bare, GPIO2 = loaded control)");
+}
 
-  // One fixed-shape object; snprintf beats pulling in a JSON library for it.
-  char body[1024];
-  int n = snprintf(body, sizeof body,
-                   "{\"device\":\"%s\",\"seq\":%lu,\"t_ms\":%lu,\"period_ms\":%lu,"
-                   "\"baseline_mv\":%.3f,\"event\":null,\"src\":\"%s\",\"mv\":[",
-                   DEVICE_ID, (unsigned long)seq, (unsigned long)t_ms,
-                   (unsigned long)PERIOD_MS, sum / BATCH_N, SRC);
-  for (size_t i = 0; i < BATCH_N && n > 0 && n < (int)sizeof body; i++)
-    n += snprintf(body + n, sizeof body - n, i ? ",%.3f" : "%.3f", buf[i]);
-  if (n < 0 || n + 3 > (int)sizeof body) {
-    Serial.println("post: payload overflow, dropped batch");
-    return;
+static void sweep() {
+  // output-capable pins only; 34-39 are input-only and cannot be driven low.
+  // Anything attached adds capacitance, so a pin reading well above the
+  // ~98-cycle bare floor is a pin with a wire actually in it.
+  const uint8_t pins[] = {4,  5,  12, 13, 14, 15, 16, 17, 18,
+                          19, 21, 22, 23, 25, 26, 27, 32, 33};
+  Serial.print("loaded pins:");
+  bool any = false;
+  for (uint8_t p : pins) {
+    uint32_t c = riseCycles(p);
+    if (c > 120) {
+      Serial.printf(" GPIO%u=%lu", p, c);
+      any = true;
+    }
   }
-  snprintf(body + n, sizeof body - n, "]}");
+  if (!any) Serial.print(" none");
+  Serial.println("   (GPIO2 LED reads ~161 for scale)");
+}
 
-  WiFiClientSecure client;
-  // ponytail: setInsecure() skips cert validation. The bearer token is the real
-  // auth and TLS still stops passive sniffing. Proper pinning needs an
-  // NTP-synced clock plus ISRG Root X1, and a captive-portal Wi-Fi that blocks
-  // NTP would then kill ingestion on stage. Upgrade: configTime() + setCACert().
-  client.setInsecure();
-
-  HTTPClient http;
-  if (!http.begin(client, SAPLINK_URL)) {
-    Serial.println("post: begin failed");
-    return;
+static int scan(int sda, int scl, uint32_t hz) {
+  Wire.end();
+  Wire.begin(sda, scl, hz);
+  delay(50);
+  int found = 0;
+  Serial.printf("scan SDA=%d SCL=%d @%luHz: ", sda, scl, hz);
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    uint8_t err = Wire.endTransmission();
+    if (err == 0) {
+      Serial.printf("ACK 0x%02X ", addr);
+      found++;
+    } else if (err != 2 && err != 3) {
+      Serial.printf("0x%02X err=%u ", addr, err);  // 4/5 = bus stuck low
+    }
   }
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Authorization", "Bearer " SAPLINK_TOKEN);
-  int code = http.POST((uint8_t *)body, strlen(body));
-  Serial.printf("POST %d seq=%lu\n", code, (unsigned long)seq);
-  if (code < 0) Serial.printf("  %s\n", http.errorToString(code).c_str());
-  else if (code >= 400) Serial.printf("  %s\n", http.getString().c_str());
-  http.end();
+  Serial.printf("-> %d device(s)\n", found);
+  return found;
 }
 
 void setup() {
   Serial.begin(115200);
   delay(300);
-  Serial.println("\nsaplink sense node");
-  wifiUp();
 }
 
 void loop() {
-  if (!wifiUp()) {
-    delay(2000);
-    return;
-  }
-  uint32_t t_ms = millis();
-  for (size_t i = 0; i < BATCH_N; i++) {
-    buf[i] = readMv(seq * BATCH_N + i);
-    delay(PERIOD_MS);
-  }
-  post(t_ms);
-  seq++;
+  Serial.printf("\nSDA(21) pull-up=%d  SCL(22) pull-up=%d\n",
+                pulledUpExternally(SDA_PIN), pulledUpExternally(SCL_PIN));
+  sweep();
+  capacitanceProbe();
+  scan(SDA_PIN, SCL_PIN, 100000);
+  // 10kHz: the ESP32's internal ~45k pull-ups are marginal at 100kHz if the
+  // board's own 10k pull-ups are missing, as this one's appear to be.
+  scan(SDA_PIN, SCL_PIN, 10000);
+  scan(SCL_PIN, SDA_PIN, 10000);  // swapped, in case the jumpers are crossed
+  Serial.println("ADS1115 expected at 0x48 (ADDR->GND), 0x49 (VDD), "
+                 "0x4A (SDA), 0x4B (SCL)");
+  delay(3000);
 }
