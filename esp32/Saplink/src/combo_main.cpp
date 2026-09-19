@@ -188,6 +188,13 @@ static void post(uint32_t t_ms, float baseline_mv, bool spike, uint32_t soil_mv,
 static void actuate(const char *why) {
   Serial.printf("pump ON  (%s) t=%lu\n", why, (unsigned long)millis());
   digitalWrite(RELAY_PIN, RELAY_ON);
+  // Read the pin back. On ESP32 digitalRead() on an OUTPUT returns the level
+  // actually being driven, so this separates "firmware never got here / the
+  // write did not take" from "the pin went high and the relay ignored it" --
+  // which is the difference between a code bug and a wiring or supply one.
+  // Printed immediately, before the motor's EMI makes serial unreadable.
+  Serial.printf("  gpio%u=%d (expect %d)\n", RELAY_PIN, digitalRead(RELAY_PIN),
+                RELAY_ON);
   delay(kPumpRunMs);
   digitalWrite(RELAY_PIN, RELAY_OFF);
   last_actuate_ms = millis();
@@ -269,7 +276,6 @@ void loop() {
     // wanders tens of millivolts over minutes and cannot be drawn on a fixed
     // axis. baseline_mv carries the absolute value for anyone who wants it.
     buf[i] = cond.deviation();
-    if (fabsf(buf[i]) > fabsf(peak_mv)) peak_mv = buf[i];
     // Sigma is measured, not assumed: on a settled electrode it sits near the
     // 0.031mV floor, so a real deflection clears 3-sigma by a wide margin.
     // Gated on warm() -- before sigma has converged the threshold is far too
@@ -277,7 +283,12 @@ void loop() {
     if (cond.warm() && det.check(cond.deviation(), cond.sigma())) {
       spike = true;
       spike_ms = millis();
-      threshold_mv = 3.0f * cond.sigma();
+      // Taken from the detector, NOT scanned out of this batch. A deflection is
+      // tracked across batches, so its peak often lives in the previous one --
+      // scanning locally reported 4.128mV against a 4.964mV threshold on
+      // hardware, a voltage that had supposedly cleared a higher bar.
+      peak_mv = det.lastPeak();
+      threshold_mv = det.lastThreshold();
     }
     delay(PERIOD_MS);
   }
@@ -318,7 +329,12 @@ void loop() {
       PacketSchema pkt;
       pkt.node_id = NODE_ID;
       pkt.event_type = replayed ? EventType::REPLAY_TRIGGER : EventType::VP_SPIKE;
-      pkt.voltage_mv = peak_mv;
+      // Magnitude, not the signed value. A VP deflects negative, and the
+      // threshold is a positive bar, so shipping the sign here would make
+      // voltage_mv < threshold_mv on the wire and read as "did not clear" all
+      // over again. Nothing is lost: the signed waveform is in the readings
+      // batch posted alongside this, sample by sample.
+      pkt.voltage_mv = fabsf(peak_mv);
       pkt.threshold_mv = threshold_mv;
       pkt.timestamp_ms = spike_ms;
       cloud.postAlert(pkt);
