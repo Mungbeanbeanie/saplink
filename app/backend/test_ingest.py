@@ -9,6 +9,7 @@ import tempfile
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ["SAPLINK_TOKEN"] = "test-token"
 os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
+os.environ["NEWS_REFRESH_SECONDS"] = "0"  # no real outbound HTTP calls during tests
 
 from fastapi.testclient import TestClient  # noqa: E402
 

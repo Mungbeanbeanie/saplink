@@ -168,6 +168,17 @@ Gotchas, in the order they bite:
 
 ---
 
+## Phase 8: Ecology News Ingestion (backend only)
+
+- Backend-only in this pass — **no frontend consumer yet**, deliberately deferred until the frontend (currently a static export, see the frontend's own notes) is re-exported. Consuming it is future work, not scoped here.
+- Split into its own file rather than added to `main.py` — the first real use of that file's own escape hatch ("split back out if it gets unwieldy"): fetching third-party RSS and running a background thread is a self-contained concern, orthogonal to request handling.
+
+- [x] `app/backend/news.py` — `NEWS_FEEDS`, 5 feeds verified by actually fetching each one (not guessed — one candidate, ScienceDaily's `earth_climate/environment.xml`, 404s and is deliberately not used): `news.mongabay.com/feed/`, `theguardian.com/environment/rss`, `e360.yale.edu/feed.xml`, `grist.org/feed/`, `sciencedaily.com/rss/earth_climate.xml`. `ensure_table(db)` creates a `news(id, source, guid UNIQUE, title, link, summary, published_ts, fetched_ts)` table. `refresh_news(db)` fetches every feed via `feedparser` (RSS/Atom's real dialect/date/encoding variance across publishers is exactly what a library beats hand-rolling for, unlike this codebase's fixed 6-field JSON elsewhere), `INSERT OR IGNORE` keyed on guid so re-fetching never duplicates; one bad feed can't block the others. `start_background_refresh(db, interval_s)` runs it on a daemon thread; a `interval_s <= 0` no-ops, so tests/CI can disable it.
+- [x] `app/backend/requirements.txt` — gains `feedparser`, unpinned like the rest of the file.
+- [x] `app/backend/main.py` — `NEWS_REFRESH_SECONDS` env var (default 1800s/30min, `0` disables); `news.ensure_table(db)` alongside the existing table setup; `@app.on_event("startup")` starts the background thread; `GET /api/news?limit=20` (public, same reasoning as `/api/readings/*` — a read path must never be gated) returns `{"items": [{id, source, title, link, summary, published_ts}]}` ordered by `COALESCE(published_ts, fetched_ts) DESC`; `POST /api/news/refresh` (device-token gated via `_auth()`, so a stranger can't spam 5 external sites through this server on demand) triggers an immediate fetch, returns `{"inserted": n}`.
+
+---
+
 # Runbook
 
 ## Topology

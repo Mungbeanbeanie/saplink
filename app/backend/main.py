@@ -30,9 +30,14 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel, Field
 
+import news
+
 DB_PATH = os.environ.get("DB_PATH", "saplink.db")
 TOKEN = os.environ.get("SAPLINK_TOKEN", "dev-token")
 WEB_ORIGINS = [o for o in os.environ.get("SAPLINK_WEB_ORIGIN", "").split(",") if o]
+# 30 min default; tests/CI set this to 0 so `python test_ingest.py` never makes
+# real outbound HTTP calls to the news feeds.
+NEWS_REFRESH_SECONDS = int(os.environ.get("NEWS_REFRESH_SECONDS", "1800"))
 
 # Browser identity, entirely separate from TOKEN above -- see _google_user().
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -68,6 +73,7 @@ for _col in ("soil_mv INTEGER", "replay INTEGER", "raw_mv TEXT"):
     except sqlite3.OperationalError:
         pass  # column already there; ALTER is the only way to ask
 db.commit()
+news.ensure_table(db)
 
 Millivolts = Annotated[float, Field(ge=-5000, le=5000)]
 
@@ -327,3 +333,32 @@ def health():
     n, last_recv = db.execute("SELECT COUNT(*), MAX(recv_ts) FROM batch").fetchone()
     devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
     return {"ok": True, "batches": n, "last_recv": last_recv, "devices": devices}
+
+
+# ------------------------------------------------------------- Ecology news
+
+NEWS_COLS = "id,source,title,link,summary,published_ts"
+
+
+@app.on_event("startup")
+def _start_news_refresh():
+    news.start_background_refresh(db, NEWS_REFRESH_SECONDS)
+
+
+@app.get("/api/news")
+def news_items(limit: Annotated[int, Query(ge=1, le=200)] = 20):
+    """Public, like /api/readings/* -- a read path must never be gated."""
+    rows = db.execute(
+        f"SELECT {NEWS_COLS} FROM news ORDER BY COALESCE(published_ts, fetched_ts) "
+        "DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return {"items": [dict(zip(NEWS_COLS.split(","), r)) for r in rows]}
+
+
+@app.post("/api/news/refresh")
+def news_refresh(authorization: Annotated[Optional[str], Header()] = None):
+    """Manual/on-demand trigger, device-token gated so a stranger can't spam
+    outbound requests to 5 external news sites through this server."""
+    _auth(authorization)
+    return {"inserted": news.refresh_news(db)}

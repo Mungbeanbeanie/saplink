@@ -3,3 +3,5 @@ uvicorn[standard]
 httpx   # TestClient only; harmless in the image
 google-auth[requests]   # Google ID token verification; [requests] is required --
                         # google.auth.transport.requests hard-imports requests
+feedparser   # RSS/Atom has real dialect/date/encoding variance across
+             # publishers -- not hand-rolling this one (see news.py)
