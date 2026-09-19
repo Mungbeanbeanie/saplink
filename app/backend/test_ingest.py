@@ -24,30 +24,34 @@ def batch(**kw):
 
 
 def test_roundtrip():
-    assert c.post("/api/ingest", json=batch(), headers=AUTH).status_code == 200
-    body = c.get("/api/samples?since_id=0").json()
+    r = c.post("/ingest", json=batch(), headers=AUTH)
+    assert r.status_code == 200, r.text
+    bid = r.json()["id"]
+    # since_id=bid-1 so this reads only our own batch, whatever else is in the db
+    body = c.get(f"/samples?since_id={bid - 1}&limit=1").json()
     s = body["samples"]
     assert len(s) == 3, s
     # t_ms must be reconstructed as t_ms + i*period_ms
     assert [x["t_ms"] for x in s] == [1000, 1100, 1200]
-    assert body["last_id"] == s[0]["batch_id"]
+    assert body["last_id"] == bid
+    assert all(x["batch_id"] == bid for x in s)
 
 
 def test_bad_token():
-    assert c.post("/api/ingest", json=batch(), headers={"Authorization": "Bearer nope"}).status_code == 401
-    assert c.post("/api/ingest", json=batch()).status_code == 401
+    assert c.post("/ingest", json=batch(), headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert c.post("/ingest", json=batch()).status_code == 401
 
 
 def test_out_of_range_rejected():
-    assert c.post("/api/ingest", json=batch(mv=[9999.0]), headers=AUTH).status_code == 422
-    assert c.post("/api/ingest", json=batch(src="lies"), headers=AUTH).status_code == 422
+    assert c.post("/ingest", json=batch(mv=[9999.0]), headers=AUTH).status_code == 422
+    assert c.post("/ingest", json=batch(src="lies"), headers=AUTH).status_code == 422
 
 
 def test_events_filtered():
-    before = len(c.get("/api/events?since_id=0").json()["events"])
-    c.post("/api/ingest", json=batch(seq=1, event=None), headers=AUTH)
-    c.post("/api/ingest", json=batch(seq=2, event="spike"), headers=AUTH)
-    evs = c.get("/api/events?since_id=0").json()["events"]
+    before = len(c.get("/events?since_id=0").json()["events"])
+    c.post("/ingest", json=batch(seq=1, event=None), headers=AUTH)
+    c.post("/ingest", json=batch(seq=2, event="spike"), headers=AUTH)
+    evs = c.get("/events?since_id=0").json()["events"]
     assert len(evs) == before + 1, evs
 
 

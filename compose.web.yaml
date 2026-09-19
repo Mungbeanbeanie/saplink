@@ -1,0 +1,18 @@
+# saplink-web box:  docker compose -f compose.web.yaml up -d --build
+# Static only. The frontend is a bind mount, so `git pull` is the whole deploy.
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
+      - ./app/frontend:/srv:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SAPLINK_WEB_DOMAIN: ${SAPLINK_WEB_DOMAIN:?set SAPLINK_WEB_DOMAIN in .env}
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

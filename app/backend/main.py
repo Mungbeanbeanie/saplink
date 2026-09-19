@@ -1,7 +1,8 @@
 """Saplink ingest + read API.
 
-One file, SQLite, no ORM. The ESP32 POSTs batches to /api/ingest; the dashboard
-polls /api/samples with the last_id it saw.
+One file, SQLite, no ORM. Served from api.<domain> on its own box, so routes need
+no /api prefix. The ESP32 POSTs batches to /ingest; the dashboard polls /samples
+with the last_id it saw.
 """
 
 import hmac
@@ -12,10 +13,12 @@ import time
 from typing import Annotated, Literal, Optional
 
 from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 DB_PATH = os.environ.get("DB_PATH", "saplink.db")
 TOKEN = os.environ.get("SAPLINK_TOKEN", "dev-token")
+WEB_ORIGINS = [o for o in os.environ.get("SAPLINK_WEB_ORIGIN", "").split(",") if o]
 
 db = sqlite3.connect(DB_PATH, check_same_thread=False)
 db.execute("PRAGMA journal_mode=WAL")
@@ -47,6 +50,16 @@ class Batch(BaseModel):
 
 app = FastAPI(title="saplink")
 
+# The frontend lives on a different box, so browser calls are cross-origin.
+# CORS is a browser courtesy, NOT the auth boundary -- the bearer token is. The
+# ESP32 is not a browser and never sends a preflight.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=WEB_ORIGINS or ["http://localhost:8080"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 COLS = "id,device,t_ms,period_ms,baseline_mv,event,src,mv"
 
 
@@ -63,7 +76,7 @@ def _rows(since_id: int, limit: int, only_events: bool):
     return db.execute(q + " ORDER BY id LIMIT ?", (since_id, limit)).fetchall()
 
 
-@app.post("/api/ingest")
+@app.post("/ingest")
 def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     _auth(authorization)
     cur = db.execute(
@@ -76,7 +89,7 @@ def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     return {"id": cur.lastrowid, "n": len(b.mv)}
 
 
-@app.get("/api/samples")
+@app.get("/samples")
 def samples(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200):
     """Flattened samples. `limit` counts BATCHES (~32 samples each), not samples."""
     out, last = [], since_id
@@ -90,7 +103,7 @@ def samples(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200
     return {"last_id": last, "samples": out}
 
 
-@app.get("/api/events")
+@app.get("/events")
 def events(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=1000)] = 100):
     out, last = [], since_id
     for bid, device, t_ms, _period, baseline, event, src, _mv in _rows(since_id, limit, True):
@@ -102,7 +115,7 @@ def events(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=1000)] = 100)
     return {"last_id": last, "events": out}
 
 
-@app.get("/api/health")
+@app.get("/health")
 def health():
     n, last_recv = db.execute("SELECT COUNT(*), MAX(recv_ts) FROM batch").fetchone()
     devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]

@@ -1,0 +1,4 @@
+# saplink-api box. TLS is automatic; Caddy also redirects :80 -> :443.
+{$SAPLINK_API_DOMAIN} {
+	reverse_proxy api:8000
+}

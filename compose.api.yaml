@@ -1,0 +1,34 @@
+# saplink-api box:  docker compose -f compose.api.yaml up -d --build
+services:
+  api:
+    build: ./app/backend
+    # --reload + a bind mount is what makes redeploy a ~1s git pull instead of
+    # a rebuild. The image only changes when requirements.txt does.
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app/backend:/app
+      - saplink-db:/data
+    environment:
+      SAPLINK_TOKEN: ${SAPLINK_TOKEN:?set SAPLINK_TOKEN in .env}
+      SAPLINK_WEB_ORIGIN: ${SAPLINK_WEB_ORIGIN:?set SAPLINK_WEB_ORIGIN in .env}
+      DB_PATH: /data/saplink.db
+    restart: unless-stopped
+    # deliberately no `ports:` -- only Caddy reaches this, over the compose network
+
+  caddy:
+    image: caddy:2-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile.api:/etc/caddy/Caddyfile:ro
+      # caddy-data holds the issued cert + ACME account. Drop it and you
+      # re-issue on every restart, which trips Let's Encrypt rate limits.
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SAPLINK_API_DOMAIN: ${SAPLINK_API_DOMAIN:?set SAPLINK_API_DOMAIN in .env}
+    restart: unless-stopped
+
+volumes:
+  saplink-db:
+  caddy-data:
+  caddy-config:

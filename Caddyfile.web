@@ -1,0 +1,5 @@
+# saplink-web box. Serves app/frontend/ straight from the repo checkout.
+{$SAPLINK_WEB_DOMAIN}, www.{$SAPLINK_WEB_DOMAIN} {
+	root * /srv
+	file_server
+}
