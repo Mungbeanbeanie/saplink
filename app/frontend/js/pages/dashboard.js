@@ -52,8 +52,8 @@
       return '<span class="tip-wrap"><span class="tag ' + t + '">' + n.label + ' · ' + n.canopy + '% canopy · ' + (n.status === 'ok' ? 'reporting' : 'quiet 6h') + '</span><span class="tip">' + n.plant + '</span></span>';
     }).join('');
 
-    var conditions = [['68%', 'Air humidity'], ['41%', 'Soil moisture'], ['14.2°C', 'Air temperature'], ['320 lux', 'Light level']].map(function (c) {
-      return '<div class="condition"><b>' + c[0] + '</b><span>' + c[1] + '</span></div>';
+    var conditions = [['68%', 'Air humidity'], ['—', 'Soil moisture (raw)', 'cond-soil'], ['14.2°C', 'Air temperature'], ['320 lux', 'Light level']].map(function (c) {
+      return '<div class="condition"><b' + (c[2] ? ' id="' + c[2] + '"' : '') + '>' + c[0] + '</b><span>' + c[1] + '</span></div>';
     }).join('');
 
     var traffic = roster.map(function (n, i) {
@@ -155,6 +155,7 @@
       live: true,
       baseline: last && last.baseline_mv != null ? last.baseline_mv : st.baseline,
       src: last && last.src ? last.src : st.src,
+      soilMv: last && last.soil_mv != null ? last.soil_mv : st.soilMv,
       seq: st.seq.concat(rows.map(function (r) { return r.seq; })).slice(-180)
     };
     if (found.length) { patch.events = mergeEvents(st.events, found); patch.spike = found[found.length - 1]; S.store.addMany(found); }
@@ -238,6 +239,7 @@
     q('cp-disc').textContent = completeness.toFixed(0) + '%';
     q('cp-head').textContent = dropped ? dropped + (dropped === 1 ? ' reading missing' : ' readings missing') : 'No readings missing';
     q('cp-note').textContent = 'Of the last ' + (seqs.length || 0) + ' batches sent';
+    q('cond-soil').textContent = st.soilMv != null ? st.soilMv.toFixed(0) + ' mV' : '—';
 
     q('alert').hidden = !spikeActive;
     q('al-detail').textContent = spike ? 'A signal rose clear of this plant’s resting level — ' + spike.mv.toFixed(1) + ' mV, where the alert level is ' + (spike.threshold != null ? spike.threshold : 70).toFixed(1) + ' mV' : '';
@@ -331,7 +333,7 @@
       var now0 = Date.now(), seed = [];
       for (var k = 120; k > 0; k--) seed.push(900 + (120 - k));
       st = { device: 'sense-1', events: [], baseline: 42, src: 'sim', live: false, health: null, healthErr: false,
-        spike: null, acked: false, signedIn: S.auth.get(), replayNote: '', seq: seed, exportNote: '', peakSig: '', tick: 0, showAll: false };
+        spike: null, acked: false, signedIn: S.auth.get(), replayNote: '', seq: seed, exportNote: '', peakSig: '', tick: 0, showAll: false, soilMv: null };
       // Earlier signals for the preview feed, so the chart opens with something real to look at.
       // Bring back every signal on record. The first time (nothing stored yet) the preview is seeded with
       // earlier signals, marked as simulated, so the chart has something to show.
