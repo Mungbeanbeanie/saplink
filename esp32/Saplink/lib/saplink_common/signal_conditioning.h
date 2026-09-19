@@ -10,19 +10,18 @@ class SignalConditioner {
  public:
   float update(float raw_mv);
   float baseline() const { return baseline_; }
-  float sigma() const;
 
+  // Rolling noise floor for PeakDetector's 3-sigma threshold. Nothing computed
+  // this before -- the caller passed a hardcoded 1.0f, which against a measured
+  // 0.1mV noise floor sets the bar ~30x too high to ever fire. Out-of-line
+  // because it derives from variance_ rather than returning a stored value.
+  float sigma() const;
 
   // What the frontend plots. The electrode carries a tens-of-mV standing
   // offset that wanders for minutes as it polarizes (measured: 95mV -> 19mV ->
   // 30mV on one insertion), so absolute mV cannot be drawn on a fixed axis.
   // The deviation can: it sits at zero and only the signal moves it.
   float deviation() const { return filtered_ - baseline_; }
-
-  // Rolling noise floor for PeakDetector's 3-sigma threshold. Nothing computed
-  // this before -- the caller passed a hardcoded 1.0f, which against a measured
-  // 0.1mV noise floor sets the bar ~30x too high to ever fire.
-  float sigma() const { return sigma_; }
 
   // Whether sigma has seen enough data to mean anything. Detection must stay
   // off until then: an under-estimated sigma does not merely mis-fire, it fires
@@ -45,12 +44,6 @@ class SignalConditioner {
   bool seeded_ = false;
   float filtered_ = 0.0f;
 
-  // Mean absolute deviation, tracked far slower than the baseline (tau ~100s at
-  // 10Hz vs ~10s) so that a spike cannot inflate the very threshold it must
-  // clear and hide itself.
-  static constexpr float kSigmaAlpha = 0.001f;
-  float mad_ = 0.0f;
-
   static constexpr uint32_t kWarmupSamples = 100;
   uint32_t samples_ = 0;
 
@@ -59,7 +52,6 @@ class SignalConditioner {
   // ADS1115 LSB at GAIN_FOUR (31uV) is the smallest real difference the
   // hardware can see, so noise is never honestly below it.
   static constexpr float kSigmaFloorMv = 0.031f;
-  float sigma_ = kSigmaFloorMv;
 
   float median() const;
 };

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cmath>
 
 float SignalConditioner::median() const {
   int n = median_count_;
@@ -12,7 +11,17 @@ float SignalConditioner::median() const {
   return sorted[n / 2];
 }
 
-float SignalConditioner::sigma() const { return std::sqrt(variance_); }
+// Floored, not raw sqrt: a settled electrode goes quieter than one ADS1115 LSB,
+// variance_ then decays toward zero, and 3*sigma with it -- which on hardware
+// made every single batch report SPIKE. Noise is never honestly below the
+// smallest difference the ADC can resolve.
+// Ternary rather than std::max: max takes its arguments by reference, which
+// odr-uses kSigmaFloorMv, and a static constexpr member has no out-of-line
+// definition before C++17 -- env:native then fails to link.
+float SignalConditioner::sigma() const {
+  const float s = std::sqrt(variance_);
+  return s > kSigmaFloorMv ? s : kSigmaFloorMv;
+}
 
 float SignalConditioner::update(float raw_mv) {
 
@@ -33,13 +42,19 @@ float SignalConditioner::update(float raw_mv) {
   median_next_ = (median_next_ + 1) % kMedianWindow;
   if (median_count_ < kMedianWindow) median_count_++;
 
-  float filtered = median();
+  // Stored, not just local: deviation() is what combo_main.cpp writes into
+  // mv[], and it reads filtered_. Leaving this unassigned made deviation()
+  // return -baseline_ for every sample.
+  filtered_ = median();
   // Deflection from baseline, computed BEFORE this sample updates baseline_ --
   // this is the auto-zero subtraction the header/plan.md describe; returning
   // raw `filtered` here was the bug (PeakDetector would see absolute signal
   // level, not deflection, so baseline wander alone could look like a spike).
-  float centered = filtered - baseline_;
+  float centered = filtered_ - baseline_;
   variance_ += (centered * centered - variance_) * alpha_;
   baseline_ += centered * alpha_;
+  // Gates warm(). Without it the counter never moves, warm() is permanently
+  // false, and the detector is switched off for the life of the board.
+  samples_++;
   return centered;
 }

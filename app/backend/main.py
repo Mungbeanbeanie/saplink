@@ -1,14 +1,20 @@
-"""Saplink readings API -- the telemetry half of the backend.
+"""Saplink API -- readings telemetry plus the alert control plane.
 
-One file, SQLite, no ORM. The ESP32 POSTs sample batches to /api/readings; the
-dashboard polls /api/readings/history with the last_id it saw.
+One file, SQLite, no ORM. The ESP32 POSTs sample batches to /api/readings and
+discrete events to /api/alerts; it then polls /api/alerts/pending to find out
+whether to run the pump. The dashboard polls /api/readings/history with the
+last_id it saw.
 
-Scope boundary: this owns READINGS only. The alert control plane that plan.md
-Phase 5 describes (POST /api/alerts, /api/alerts/pending, /api/alerts/{id}/ack,
-/api/alerts/manual) is a separate concern and is NOT implemented here -- it
-carries its own schema (node_id/event_type/voltage_mv/threshold_mv/timestamp_ms)
-and an ack state machine. plan.md declared the /api/readings/* routes without a
-backing model; this file is that model.
+Two tables, two contracts, deliberately not merged. Contract A (batch) is the
+continuous waveform: many samples, no state. Contract B (alert) is a discrete
+event with an ack state machine driving a physical actuator. They answer
+different questions and one row of one is never a row of the other.
+
+NOT here, on purpose: POST /api/alerts/manual. It existed only to fake an event
+for the demo, and the firmware's serial 'r' key does that better by driving the
+real detector instead of bypassing it. Its absence is also why nothing in this
+file except /api/auth/me sits behind _google_user -- no browser-reachable write
+can run the pump.
 """
 
 import hmac
@@ -45,13 +51,22 @@ db.execute(
          t_ms INTEGER, period_ms INTEGER, baseline_mv REAL, event TEXT,
          src TEXT, mv TEXT)"""
 )
-# soil_mv arrived after the first deployments, and CREATE TABLE IF NOT EXISTS
+# Contract B. Separate table because an alert is a discrete event with state
+# (acked), not a slice of waveform -- see the module docstring.
+db.execute(
+    """CREATE TABLE IF NOT EXISTS alert(
+         id INTEGER PRIMARY KEY, created_ts REAL, node_id INTEGER,
+         event_type TEXT, voltage_mv REAL, threshold_mv REAL,
+         timestamp_ms INTEGER, acked INTEGER DEFAULT 0)"""
+)
+# These arrived after the first deployments, and CREATE TABLE IF NOT EXISTS
 # will not add a column to a table that already exists -- so an existing
-# saplink.db needs this or every insert fails on an unknown column.
-try:
-    db.execute("ALTER TABLE batch ADD COLUMN soil_mv INTEGER")
-except sqlite3.OperationalError:
-    pass  # column already there; ALTER is the only way to ask
+# saplink.db needs these or every insert fails on an unknown column.
+for _col in ("soil_mv INTEGER", "replay INTEGER", "raw_mv TEXT"):
+    try:
+        db.execute(f"ALTER TABLE batch ADD COLUMN {_col}")
+    except sqlite3.OperationalError:
+        pass  # column already there; ALTER is the only way to ask
 db.commit()
 
 Millivolts = Annotated[float, Field(ge=-5000, le=5000)]
@@ -74,6 +89,34 @@ class Batch(BaseModel):
     # before this field still validates: additive, so the contract above stays
     # frozen rather than changed.
     soil_mv: Optional[int] = Field(default=None, ge=0, le=5000)
+    # True when RecordedSignalPlayer superimposed a waveform onto this batch.
+    # src stays "ads1115" because the ADC really is live, so without a separate
+    # flag an injected spike is indistinguishable from a real one on stage.
+    replay: bool = False
+    # What the ADC actually produced, before conditioning. NOT recoverable from
+    # mv[]: deviation() = filtered - baseline, so baseline_mv + mv[i] gives back
+    # the MEDIAN-FILTERED value, not the raw one. Same reasoning as soil_mv --
+    # keep raw in the DB so a bad derivation is re-derivable without re-running
+    # the experiment. On a replay batch this is pre-injection, so raw_mv and mv
+    # disagree by exactly the injected waveform and `replay` says why.
+    raw_mv: Optional[list[Millivolts]] = Field(default=None, max_length=256)
+
+
+class AlertIn(BaseModel):
+    """Contract B. Field names must match packet_schema.h EXACTLY.
+
+    The firmware hand-builds this JSON with snprintf in CloudClient::postAlert;
+    there is no code generation between the two languages, so a rename here
+    silently stops parsing there.
+    """
+
+    node_id: int = Field(ge=0, le=255)   # ORIGIN -- who raised it, not who acts
+    event_type: Literal["VP_SPIKE", "REPLAY_TRIGGER"]
+    voltage_mv: Millivolts               # peak deviation that fired the detector
+    threshold_mv: Millivolts             # 3*sigma at fire time, measured
+    # millis() on the board, NOT epoch ms: the firmware parses this back with
+    # sscanf("%ld") into a 32-bit long, which epoch milliseconds overflow.
+    timestamp_ms: int = Field(ge=0)
 
 
 app = FastAPI(title="saplink")
@@ -88,7 +131,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-COLS = "id,device,t_ms,period_ms,baseline_mv,event,src,mv,soil_mv,seq"
+COLS = "id,device,t_ms,period_ms,baseline_mv,event,src,mv,soil_mv,seq,replay,raw_mv"
+
+# Ordered so "id" is the first key in the pending-alert JSON. strstr for
+# '"id":' cannot match inside '"node_id":' anyway -- the underscore blocks the
+# leading quote -- but the firmware's parser is positional-ish enough that
+# leaning on that is not worth it.
+ALERT_COLS = "id,node_id,event_type,voltage_mv,threshold_mv,timestamp_ms"
 
 
 def _auth(authorization: Optional[str]) -> None:
@@ -137,23 +186,30 @@ def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     _auth(authorization)
     cur = db.execute(
         "INSERT INTO batch(recv_ts,device,seq,t_ms,period_ms,baseline_mv,event,src,mv,"
-        "soil_mv) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "soil_mv,replay,raw_mv) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (time.time(), b.device, b.seq, b.t_ms, b.period_ms, b.baseline_mv,
-         b.event, b.src, json.dumps(b.mv), b.soil_mv),
+         b.event, b.src, json.dumps(b.mv), b.soil_mv, int(b.replay),
+         json.dumps(b.raw_mv) if b.raw_mv is not None else None),
     )
     db.commit()
     return {"id": cur.lastrowid, "n": len(b.mv)}
 
 
 def _flatten(row):
-    bid, device, t_ms, period_ms, baseline, event, src, mv, soil_mv, seq = row
-    # soil_mv/seq are per-batch, not per-sample, and ride along on each flattened
-    # sample exactly as baseline_mv/event/src already do -- the dashboard reads
-    # whichever sample it is drawing and gets the batch context with it. seq
-    # lets it detect dropped batches (gaps in the per-sample seq sequence).
+    (bid, device, t_ms, period_ms, baseline, event, src, mv, soil_mv, seq,
+     replay, raw_mv) = row
+    # soil_mv/seq/replay are per-batch, not per-sample, and ride along on each
+    # flattened sample exactly as baseline_mv/event/src already do -- the
+    # dashboard reads whichever sample it is drawing and gets the batch context
+    # with it. seq lets it detect dropped batches (gaps in the seq sequence).
+    raw = json.loads(raw_mv) if raw_mv else []
     return [{"batch_id": bid, "device": device, "t_ms": t_ms + i * period_ms,
              "mv": v, "baseline_mv": baseline, "event": event, "src": src,
-             "soil_mv": soil_mv, "seq": seq}
+             "soil_mv": soil_mv, "seq": seq, "replay": bool(replay),
+             # Bounds-checked rather than zipped: a short raw_mv must not
+             # silently pair sample i's mv with some other sample's raw value.
+             # Absent or short -> None, never a misaligned number.
+             "raw_mv": raw[i] if i < len(raw) else None}
             for i, v in enumerate(json.loads(mv))]
 
 
@@ -176,12 +232,92 @@ def latest():
     return {"last_id": row[0], "sample": _flatten(row)[-1]}
 
 
+# ---------------------------------------------------------------- Contract B
+
+def _alert_json(row) -> dict:
+    return dict(zip(ALERT_COLS.split(","), row))
+
+
+def _raise_alert(a: AlertIn) -> int:
+    """Insert an alert, unless one is already waiting to be acted on.
+
+    ponytail: one un-acked alert at a time, enforced here rather than in each
+    caller. A noisy electrode firing on consecutive batches would otherwise
+    queue doses the pump delivers back to back, and this is the single point
+    every alert-creating path routes through.
+    """
+    row = db.execute("SELECT id FROM alert WHERE acked=0 ORDER BY id LIMIT 1").fetchone()
+    if row:
+        return row[0]
+    cur = db.execute(
+        "INSERT INTO alert(created_ts,node_id,event_type,voltage_mv,threshold_mv,"
+        "timestamp_ms) VALUES(?,?,?,?,?,?)",
+        (time.time(), a.node_id, a.event_type, a.voltage_mv, a.threshold_mv,
+         a.timestamp_ms),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+@app.post("/api/alerts")
+def post_alert(a: AlertIn, authorization: Annotated[Optional[str], Header()] = None):
+    """The board reports a detected event. Device token, same as /api/readings."""
+    _auth(authorization)
+    return {"id": _raise_alert(a)}
+
+
+@app.get("/api/alerts")
+def alerts(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200):
+    """Event history. Public, like /api/readings/* -- a read path must never be
+    able to kill the dashboard on stage behind an auth failure."""
+    rows = db.execute(
+        f"SELECT {ALERT_COLS},acked,created_ts FROM alert WHERE id>? ORDER BY id LIMIT ?",
+        (since_id, limit),
+    ).fetchall()
+    out = [{**_alert_json(r[:-2]), "acked": bool(r[-2]), "created_ts": r[-1]}
+           for r in rows]
+    return {"last_id": out[-1]["id"] if out else since_id, "alerts": out}
+
+
+@app.get("/api/alerts/pending")
+def pending_alert(authorization: Annotated[Optional[str], Header()] = None):
+    """Oldest un-acked alert, or 404.
+
+    404 rather than 200-with-null on purpose: CloudClient::pollPendingAlert
+    treats any non-200 as "nothing pending", so an empty queue and a transport
+    failure land on the same harmless branch.
+
+    ponytail: returns the oldest un-acked alert whatever raised it -- one board
+    is both ends of the route today, so the loopback IS the demo. A dedicated
+    plant-2 board wants a target filter here.
+    """
+    _auth(authorization)
+    row = db.execute(
+        f"SELECT {ALERT_COLS} FROM alert WHERE acked=0 ORDER BY id LIMIT 1"
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "nothing pending")
+    return _alert_json(row)
+
+
+@app.post("/api/alerts/{alert_id}/ack")
+def ack_alert(alert_id: int, authorization: Annotated[Optional[str], Header()] = None):
+    """Claim an alert so it cannot fire the pump twice."""
+    _auth(authorization)
+    cur = db.execute("UPDATE alert SET acked=1 WHERE id=? AND acked=0", (alert_id,))
+    db.commit()
+    if cur.rowcount == 0:
+        raise HTTPException(404, "no such un-acked alert")
+    return {"ok": True, "id": alert_id}
+
+
 @app.get("/api/auth/me")
 def me(authorization: Annotated[Optional[str], Header()] = None):
     """Frontend validates a token once and renders 'signed in as X'.
 
-    The only route using _google_user today -- hang it off POST
-    /api/alerts/manual too once the alert control plane exists.
+    Still the only route using _google_user, and now deliberately so: the alert
+    plane above is device-token only, so no browser-reachable write can run the
+    pump. See the module docstring on the dropped /api/alerts/manual.
     """
     return {"email": _google_user(authorization)}
 

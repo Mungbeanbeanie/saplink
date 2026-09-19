@@ -5,7 +5,9 @@
 #include <WiFiClientSecure.h>
 #include <Wire.h>
 
+#include "cloud_client.h"
 #include "peak_detector.h"
+#include "recorded_signal.h"
 #include "secrets.h"
 #include "signal_conditioning.h"
 
@@ -19,13 +21,37 @@
 // converting the moment WiFi starts, and this sketch runs WiFi.
 #define SOIL_PIN 34
 
+// PLANT 2's pump, not plant 1's. The electrodes above read plant 1; this relay
+// waters the neighbour. That separation is why there is no feedback loop to
+// guard against -- watering plant 2 cannot move plant 1's electrode.
+// Polarity measured on the bench, not read off the silkscreen -- see
+// pump_main.cpp, which pulsed the pin both ways and let the motor answer.
+static const uint8_t RELAY_PIN = 26;
+static const int RELAY_ON = HIGH;
+static const int RELAY_OFF = LOW;
+static const uint32_t kPumpRunMs = 1500;
+
+// Calibration knob, not a runaway guard: there is no feedback path. A noisy
+// electrode firing on consecutive batches simply must not empty the reservoir
+// halfway through a demo.
+static const uint32_t kMinActuateGapMs = 30000;
+
+// Liveness ping while nothing is happening. Ingestion is event-driven, so a
+// healthy board is silent -- and /api/health's last_recv, which the dashboard's
+// connection panel reads, would go stale and report it as offline. Set to 0 for
+// true silence and accept that panel going red.
+static const uint32_t kHeartbeatMs = 60000;
+
 static Adafruit_ADS1115 ads;
 static bool ads_ok = false;
 
 static SignalConditioner cond;
 static PeakDetector det;
+static CloudClient cloud;
+static RecordedSignalPlayer player;
 
-// 10 Hz into a 32-sample buffer -> one POST every ~3.2s.
+// 10 Hz into a 32-sample buffer -> one batch every ~3.2s. Whether that batch is
+// uploaded is a separate question now; see loop().
 static const uint32_t PERIOD_MS = 100;
 static const size_t BATCH_N = 32;
 
@@ -34,7 +60,29 @@ static const size_t BATCH_N = 32;
 static const char *SRC = "sim";
 
 static float buf[BATCH_N];
+static float raw_buf[BATCH_N];
 static uint32_t seq = 0;
+
+// One batch of pre-trigger context. A VP's onset is the interesting part and it
+// has already happened by the time the detector confirms the rebound, so the
+// batch BEFORE the spike is held back and sent with it.
+static float prev_buf[BATCH_N];
+static float prev_raw_buf[BATCH_N];
+static uint32_t prev_t_ms = 0;
+static bool prev_valid = false;   // false on the very first loop, nothing to send
+static bool prev_sent = false;    // don't send the same batch twice
+static bool prev_replayed = false;  // the 6s waveform spans ~2 batches, so the
+                                    // held-back one can carry injected samples
+                                    // too -- it must not be labelled as clean
+// Captured with the batch, not read at send time: the pre-trigger batch is
+// uploaded one cycle late, and reporting the CURRENT baseline/soil against
+// older samples would quietly misdate both.
+static float prev_baseline = 0.0f;
+static uint32_t prev_soil_mv = 0;
+static bool send_tail = false;    // the batch after a spike carries the VP tail
+
+static uint32_t last_actuate_ms = 0;
+static uint32_t last_upload_ms = 0;
 
 // THE SEAM, now crossed: the ADS1115 is wired and A2-A3 is read for real. The
 // synthetic trace stays as the fallback so a loose wire degrades the demo to a
@@ -82,19 +130,29 @@ static bool wifiUp() {
 // fair stand-in while mv[] carried absolute readings, but mv[] now carries
 // drift-removed deviations whose mean is ~0 by construction, which would have
 // reported a live 30mV electrode as sitting at zero.
-static void post(uint32_t t_ms, float baseline_mv, bool spike, uint32_t soil_mv) {
+static void post(uint32_t t_ms, float baseline_mv, bool spike, uint32_t soil_mv,
+                 const float *mv, const float *raw, bool replay) {
   // One fixed-shape object; snprintf beats pulling in a JSON library for it.
-  char body[1024];
+  // 2048, not 1024: two 32-float arrays plus the header run ~820 bytes worst
+  // case. It would fit, but with no margin, and the guard below drops the whole
+  // batch rather than truncating -- an overflow costs the event, not a field.
+  char body[2048];
   int n = snprintf(body, sizeof body,
                    "{\"device\":\"%s\",\"seq\":%lu,\"t_ms\":%lu,\"period_ms\":%lu,"
                    "\"baseline_mv\":%.3f,\"event\":%s,\"src\":\"%s\","
-                   "\"soil_mv\":%lu,\"mv\":[",
+                   "\"soil_mv\":%lu,\"replay\":%s,\"mv\":[",
                    DEVICE_ID, (unsigned long)seq, (unsigned long)t_ms,
                    (unsigned long)PERIOD_MS, baseline_mv,
                    spike ? "\"spike\"" : "null", SRC,
-                   (unsigned long)soil_mv);
+                   (unsigned long)soil_mv, replay ? "true" : "false");
   for (size_t i = 0; i < BATCH_N && n > 0 && n < (int)sizeof body; i++)
-    n += snprintf(body + n, sizeof body - n, i ? ",%.3f" : "%.3f", buf[i]);
+    n += snprintf(body + n, sizeof body - n, i ? ",%.3f" : "%.3f", mv[i]);
+  // raw_mv is what the ADC produced, before conditioning. mv[] above carries
+  // deviations, and baseline + deviation reconstructs the MEDIAN-FILTERED value
+  // rather than the raw one -- so without this the raw read is simply gone.
+  n += snprintf(body + n, sizeof body - n, "],\"raw_mv\":[");
+  for (size_t i = 0; i < BATCH_N && n > 0 && n < (int)sizeof body; i++)
+    n += snprintf(body + n, sizeof body - n, i ? ",%.3f" : "%.3f", raw[i]);
   if (n < 0 || n + 3 > (int)sizeof body) {
     Serial.println("post: payload overflow, dropped batch");
     return;
@@ -122,10 +180,31 @@ static void post(uint32_t t_ms, float baseline_mv, bool spike, uint32_t soil_mv)
   http.end();
 }
 
+// Log BEFORE energising, never during. The motor's EMI makes serial unreadable
+// while it runs -- pump_main.cpp measured 84-440KB of framing garbage per run
+// against 260 clean bytes idle. Blocking is deliberate too: plant 1's readings
+// during the run would be that same EMI, so a 1.5s gap in the trace is more
+// honest than 1.5s of noise pretending to be a signal.
+static void actuate(const char *why) {
+  Serial.printf("pump ON  (%s) t=%lu\n", why, (unsigned long)millis());
+  digitalWrite(RELAY_PIN, RELAY_ON);
+  delay(kPumpRunMs);
+  digitalWrite(RELAY_PIN, RELAY_OFF);
+  last_actuate_ms = millis();
+  Serial.printf("pump OFF t=%lu\n", (unsigned long)last_actuate_ms);
+}
+
 void setup() {
+  // FIRST, before anything slow. At reset GPIO26 floats, and a floating IN on
+  // an active-high module is undefined -- relayoff_main.cpp measured 1482mv,
+  // which is above logic-low. Safe means DRIVEN off, not untouched.
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, RELAY_OFF);
+
   Serial.begin(115200);
   delay(300);
-  Serial.println("\nsaplink sense node");
+  Serial.println("\nsaplink combo node: plant 1 senses, plant 2 gets watered");
+  Serial.println("keys: r = inject recorded VP into plant 1, p = test pump");
 
   // 50kHz, not 100k: the electrode leads run alongside the bus and 100kHz threw
   // enough timeouts to lose samples. Nothing here needs the bandwidth.
@@ -146,20 +225,60 @@ void setup() {
 }
 
 void loop() {
+  // Once per batch, not per sample: a keypress that lands mid-batch waits at
+  // most 3.2s, and polling Serial 32 times a batch buys nothing.
+  if (Serial.available()) {
+    const int key = Serial.read();
+    if (key == 'r') {
+      Serial.println("replay: armed");
+      player.trigger();
+    } else if (key == 'p') {
+      // Bench test only -- primes the line and proves the relay before a demo.
+      // Deliberately NOT a stimulus path: the pump is in plant 2 and cannot
+      // produce a signal on plant 1's electrode.
+      actuate("manual test");
+    }
+  }
+
   uint32_t t_ms = millis();
   bool spike = false;
+  bool replayed = false;
+  float peak_mv = 0.0f;
+  float threshold_mv = 0.0f;
+  uint32_t spike_ms = 0;
+
   for (size_t i = 0; i < BATCH_N; i++) {
-    cond.update(readMv(seq * BATCH_N + i));
+    float raw = readMv(seq * BATCH_N + i);
+    float injected;
+    // SUPERIMPOSED, not substituted. The waveform is 0-centred; replacing the
+    // read would step the baseline by the electrode's whole standing offset and
+    // read as an artifact rather than a VP. Riding the live baseline is what a
+    // real deflection does.
+    if (player.nextSample(injected)) {
+      raw += injected;
+      replayed = true;
+    }
+    // Captured BEFORE conditioning and before nothing else -- this is the only
+    // record of what the ADC actually saw. On a replay batch it stays
+    // pre-injection, so raw_mv and mv differ by exactly the injected waveform
+    // and the replay flag explains why.
+    raw_buf[i] = raw;
+    cond.update(raw);
     // Deviation, not the raw reading. The frontend gets a trace centred on zero
     // with the electrode's polarization drift already subtracted out -- raw mV
     // wanders tens of millivolts over minutes and cannot be drawn on a fixed
     // axis. baseline_mv carries the absolute value for anyone who wants it.
     buf[i] = cond.deviation();
+    if (fabsf(buf[i]) > fabsf(peak_mv)) peak_mv = buf[i];
     // Sigma is measured, not assumed: on a settled electrode it sits near the
     // 0.031mV floor, so a real deflection clears 3-sigma by a wide margin.
     // Gated on warm() -- before sigma has converged the threshold is far too
     // low and every batch reports a spike, which is exactly what hardware did.
-    if (cond.warm() && det.check(cond.deviation(), cond.sigma())) spike = true;
+    if (cond.warm() && det.check(cond.deviation(), cond.sigma())) {
+      spike = true;
+      spike_ms = millis();
+      threshold_mv = 3.0f * cond.sigma();
+    }
     delay(PERIOD_MS);
   }
   const uint32_t soil_mv = readSoilMv();
@@ -169,9 +288,80 @@ void loop() {
   // Wi-Fi lost its signal too, and this path could not be checked at all
   // without working credentials. The batch is conditioned and printed either
   // way, and this line is exactly what the frontend would have received.
-  Serial.printf("seq=%lu src=%s baseline=%.3fmv sigma=%.3fmv soil=%lumv %s\n",
+  Serial.printf("seq=%lu src=%s baseline=%.3fmv sigma=%.3fmv soil=%lumv %s%s\n",
                 (unsigned long)seq, SRC, cond.baseline(), cond.sigma(),
-                (unsigned long)soil_mv, spike ? "SPIKE" : "");
-  if (wifiUp()) post(t_ms, cond.baseline(), spike, soil_mv);
+                (unsigned long)soil_mv, spike ? "SPIKE" : "",
+                replayed ? " [replay]" : "");
+
+  // Ingestion is event-driven: a quiet plant uploads nothing. What gets sent is
+  // the window AROUND an event -- the batch before it (the onset, already past
+  // by the time the detector confirms a rebound), the batch it fired in, and
+  // the one after (the tail). ~9.6s of waveform per event, silence either side.
+  const bool heartbeat =
+      kHeartbeatMs && (millis() - last_upload_ms >= kHeartbeatMs);
+  bool sent_this_batch = false;
+
+  if (wifiUp()) {
+    if (spike) {
+      if (prev_valid && !prev_sent) {
+        seq--;  // the held-back batch keeps its own sequence number
+        post(prev_t_ms, prev_baseline, false, prev_soil_mv, prev_buf,
+             prev_raw_buf, prev_replayed);
+        seq++;
+      }
+      post(t_ms, cond.baseline(), true, soil_mv, buf, raw_buf, replayed);
+      sent_this_batch = true;
+
+      // Contract B. event_type distinguishes an injected VP from a real one --
+      // src stays "ads1115" either way because the ADC genuinely is live, so
+      // without this the dashboard cannot tell them apart.
+      PacketSchema pkt;
+      pkt.node_id = NODE_ID;
+      pkt.event_type = replayed ? EventType::REPLAY_TRIGGER : EventType::VP_SPIKE;
+      pkt.voltage_mv = peak_mv;
+      pkt.threshold_mv = threshold_mv;
+      pkt.timestamp_ms = spike_ms;
+      cloud.postAlert(pkt);
+
+      send_tail = true;
+    } else if (send_tail) {
+      post(t_ms, cond.baseline(), false, soil_mv, buf, raw_buf, replayed);
+      sent_this_batch = true;
+      send_tail = false;
+    } else if (heartbeat) {
+      post(t_ms, cond.baseline(), false, soil_mv, buf, raw_buf, replayed);
+      sent_this_batch = true;
+    }
+    if (sent_this_batch) last_upload_ms = millis();
+
+    // Close the route. The board does NOT pump on its own detection -- it pumps
+    // on an event the backend handed back, which is the whole point of routing
+    // through the cloud instead of writing an if-statement here.
+    int alert_id = 0;
+    PacketSchema incoming;
+    if (cloud.pollPendingAlert(incoming, alert_id)) {
+      // Ack BEFORE actuating. A failed ack then costs a missed dose rather than
+      // a repeated one, and the wrong direction on a pump is a flooded plant.
+      if (cloud.ackAlert(alert_id)) {
+        if (last_actuate_ms && millis() - last_actuate_ms < kMinActuateGapMs) {
+          // Acked anyway: leaving it un-acked would make the backend's dedupe
+          // keep handing back the same alert, wedging /api/alerts/pending on an
+          // event nobody will ever act on.
+          Serial.printf("cooldown, skipped id=%d\n", alert_id);
+        } else {
+          actuate("alert");
+        }
+      }
+    }
+  }
+
+  memcpy(prev_buf, buf, sizeof buf);
+  memcpy(prev_raw_buf, raw_buf, sizeof raw_buf);
+  prev_t_ms = t_ms;
+  prev_baseline = cond.baseline();
+  prev_soil_mv = soil_mv;
+  prev_replayed = replayed;
+  prev_valid = true;
+  prev_sent = sent_this_batch;
   seq++;
 }
