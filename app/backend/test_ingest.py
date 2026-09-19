@@ -8,6 +8,7 @@ import tempfile
 
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ["SAPLINK_TOKEN"] = "test-token"
+os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -56,6 +57,19 @@ def test_latest():
     assert body["sample"]["mv"] == 8.0, body
     assert body["sample"]["t_ms"] == 1100, body
     assert body["sample"]["event"] == "spike", body
+
+
+def test_google_garbage_token():
+    # NEEDS NETWORK: google-auth fetches Google's certs before parsing, so
+    # offline this is 503 ("can't check") rather than 401 ("token is bad").
+    assert c.get("/api/auth/me", headers={"Authorization": "Bearer garbage"}).status_code == 401
+    assert c.get("/api/auth/me").status_code == 401
+
+
+def test_reads_stay_public():
+    # guards against accidentally gating the live chart behind auth
+    assert c.get("/api/readings/history").status_code == 200
+    assert c.get("/api/health").status_code == 200
 
 
 if __name__ == "__main__":

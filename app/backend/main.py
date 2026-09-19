@@ -20,11 +20,20 @@ from typing import Annotated, Literal, Optional
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 from pydantic import BaseModel, Field
 
 DB_PATH = os.environ.get("DB_PATH", "saplink.db")
 TOKEN = os.environ.get("SAPLINK_TOKEN", "dev-token")
 WEB_ORIGINS = [o for o in os.environ.get("SAPLINK_WEB_ORIGIN", "").split(",") if o]
+
+# Browser identity, entirely separate from TOKEN above -- see _google_user().
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+# empty = any Google account passes; still a real verified identity
+ALLOWED_EMAILS = {e.strip().lower()
+                  for e in os.environ.get("SAPLINK_ALLOWED_EMAILS", "").split(",")
+                  if e.strip()}
 
 db = sqlite3.connect(DB_PATH, check_same_thread=False)
 db.execute("PRAGMA journal_mode=WAL")
@@ -75,6 +84,35 @@ def _auth(authorization: Optional[str]) -> None:
         raise HTTPException(401, "bad token")
 
 
+def _google_user(authorization: Optional[str]) -> str:
+    """Browser identity. NOT the device path -- _auth() owns that, unchanged.
+
+    Two callers, two credentials: the ESP32 carries a shared SAPLINK_TOKEN, a
+    person carries a Google ID token. Do not merge the checks.
+    """
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(503, "GOOGLE_CLIENT_ID not configured")
+    scheme, _, tok = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not tok:
+        raise HTTPException(401, "missing bearer token")
+    try:
+        # Request() per call on purpose: requests.Session isn't thread-safe and
+        # uvicorn runs sync handlers on a threadpool. google-auth caches Google's
+        # certs at module level, so this costs nothing after the first call.
+        claims = id_token.verify_oauth2_token(
+            tok, google_requests.Request(), GOOGLE_CLIENT_ID)
+    except ValueError as e:
+        raise HTTPException(401, f"bad google token: {e}")
+    except Exception as e:
+        # transport/cert-fetch failure is ours, not the caller's -- don't report
+        # "your token is bad" when Google was just unreachable
+        raise HTTPException(503, f"token verification unavailable: {e}")
+    email = (claims.get("email") or "").lower()
+    if ALLOWED_EMAILS and email not in ALLOWED_EMAILS:
+        raise HTTPException(403, "not allowed")
+    return email
+
+
 def _rows(since_id: int, limit: int):
     return db.execute(
         f"SELECT {COLS} FROM batch WHERE id>? ORDER BY id LIMIT ?", (since_id, limit)
@@ -118,6 +156,16 @@ def latest():
     if row is None:
         return {"last_id": 0, "sample": None}
     return {"last_id": row[0], "sample": _flatten(row)[-1]}
+
+
+@app.get("/api/auth/me")
+def me(authorization: Annotated[Optional[str], Header()] = None):
+    """Frontend validates a token once and renders 'signed in as X'.
+
+    The only route using _google_user today -- hang it off POST
+    /api/alerts/manual too once the alert control plane exists.
+    """
+    return {"email": _google_user(authorization)}
 
 
 @app.get("/api/health")
