@@ -24,11 +24,11 @@ def batch(**kw):
 
 
 def test_roundtrip():
-    r = c.post("/ingest", json=batch(), headers=AUTH)
+    r = c.post("/api/readings", json=batch(), headers=AUTH)
     assert r.status_code == 200, r.text
     bid = r.json()["id"]
     # since_id=bid-1 so this reads only our own batch, whatever else is in the db
-    body = c.get(f"/samples?since_id={bid - 1}&limit=1").json()
+    body = c.get(f"/api/readings/history?since_id={bid - 1}&limit=1").json()
     s = body["samples"]
     assert len(s) == 3, s
     # t_ms must be reconstructed as t_ms + i*period_ms
@@ -38,21 +38,24 @@ def test_roundtrip():
 
 
 def test_bad_token():
-    assert c.post("/ingest", json=batch(), headers={"Authorization": "Bearer nope"}).status_code == 401
-    assert c.post("/ingest", json=batch()).status_code == 401
+    assert c.post("/api/readings", json=batch(), headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert c.post("/api/readings", json=batch()).status_code == 401
 
 
 def test_out_of_range_rejected():
-    assert c.post("/ingest", json=batch(mv=[9999.0]), headers=AUTH).status_code == 422
-    assert c.post("/ingest", json=batch(src="lies"), headers=AUTH).status_code == 422
+    assert c.post("/api/readings", json=batch(mv=[9999.0]), headers=AUTH).status_code == 422
+    assert c.post("/api/readings", json=batch(src="lies"), headers=AUTH).status_code == 422
 
 
-def test_events_filtered():
-    before = len(c.get("/events?since_id=0").json()["events"])
-    c.post("/ingest", json=batch(seq=1, event=None), headers=AUTH)
-    c.post("/ingest", json=batch(seq=2, event="spike"), headers=AUTH)
-    evs = c.get("/events?since_id=0").json()["events"]
-    assert len(evs) == before + 1, evs
+def test_latest():
+    r = c.post("/api/readings", json=batch(seq=9, mv=[7.0, 8.0], event="spike"), headers=AUTH)
+    bid = r.json()["id"]
+    body = c.get("/api/readings/latest").json()
+    assert body["last_id"] == bid, body
+    # latest = the LAST sample of the newest batch, at t_ms + (n-1)*period_ms
+    assert body["sample"]["mv"] == 8.0, body
+    assert body["sample"]["t_ms"] == 1100, body
+    assert body["sample"]["event"] == "spike", body
 
 
 if __name__ == "__main__":

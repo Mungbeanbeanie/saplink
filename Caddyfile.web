@@ -1,5 +1,8 @@
-# saplink-web box. Serves app/frontend/ straight from the repo checkout.
+# saplink-web box. Serves the Vite build output (app/frontend/dist), produced by
+# the `build` service in compose.web.yaml on every deploy.
 {$SAPLINK_WEB_DOMAIN}, www.{$SAPLINK_WEB_DOMAIN} {
 	root * /srv
 	file_server
+	# SPA fallback: unknown paths return index.html so client-side routing works.
+	try_files {path} /index.html
 }

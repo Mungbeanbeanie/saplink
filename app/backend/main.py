@@ -1,8 +1,14 @@
-"""Saplink ingest + read API.
+"""Saplink readings API -- the telemetry half of the backend.
 
-One file, SQLite, no ORM. Served from api.<domain> on its own box, so routes need
-no /api prefix. The ESP32 POSTs batches to /ingest; the dashboard polls /samples
-with the last_id it saw.
+One file, SQLite, no ORM. The ESP32 POSTs sample batches to /api/readings; the
+dashboard polls /api/readings/history with the last_id it saw.
+
+Scope boundary: this owns READINGS only. The alert control plane that plan.md
+Phase 5 describes (POST /api/alerts, /api/alerts/pending, /api/alerts/{id}/ack,
+/api/alerts/manual) is a separate concern and is NOT implemented here -- it
+carries its own schema (node_id/event_type/voltage_mv/threshold_mv/timestamp_ms)
+and an ack state machine. plan.md declared the /api/readings/* routes without a
+backing model; this file is that model.
 """
 
 import hmac
@@ -69,14 +75,13 @@ def _auth(authorization: Optional[str]) -> None:
         raise HTTPException(401, "bad token")
 
 
-def _rows(since_id: int, limit: int, only_events: bool):
-    q = f"SELECT {COLS} FROM batch WHERE id>?"
-    if only_events:
-        q += " AND event IS NOT NULL"
-    return db.execute(q + " ORDER BY id LIMIT ?", (since_id, limit)).fetchall()
+def _rows(since_id: int, limit: int):
+    return db.execute(
+        f"SELECT {COLS} FROM batch WHERE id>? ORDER BY id LIMIT ?", (since_id, limit)
+    ).fetchall()
 
 
-@app.post("/ingest")
+@app.post("/api/readings")
 def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     _auth(authorization)
     cur = db.execute(
@@ -89,33 +94,33 @@ def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     return {"id": cur.lastrowid, "n": len(b.mv)}
 
 
-@app.get("/samples")
-def samples(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200):
+def _flatten(row):
+    bid, device, t_ms, period_ms, baseline, event, src, mv = row
+    return [{"batch_id": bid, "device": device, "t_ms": t_ms + i * period_ms,
+             "mv": v, "baseline_mv": baseline, "event": event, "src": src}
+            for i, v in enumerate(json.loads(mv))]
+
+
+@app.get("/api/readings/history")
+def history(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200):
     """Flattened samples. `limit` counts BATCHES (~32 samples each), not samples."""
     out, last = [], since_id
-    for bid, device, t_ms, period_ms, baseline, event, src, mv in _rows(since_id, limit, False):
-        last = bid
-        for i, v in enumerate(json.loads(mv)):
-            out.append({
-                "batch_id": bid, "device": device, "t_ms": t_ms + i * period_ms,
-                "mv": v, "baseline_mv": baseline, "event": event, "src": src,
-            })
+    for row in _rows(since_id, limit):
+        last = row[0]
+        out += _flatten(row)
     return {"last_id": last, "samples": out}
 
 
-@app.get("/events")
-def events(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=1000)] = 100):
-    out, last = [], since_id
-    for bid, device, t_ms, _period, baseline, event, src, _mv in _rows(since_id, limit, True):
-        last = bid
-        out.append({
-            "batch_id": bid, "device": device, "t_ms": t_ms,
-            "event": event, "baseline_mv": baseline, "src": src,
-        })
-    return {"last_id": last, "events": out}
+@app.get("/api/readings/latest")
+def latest():
+    """Most recent single sample, for the dashboard's live panel + alert banner."""
+    row = db.execute(f"SELECT {COLS} FROM batch ORDER BY id DESC LIMIT 1").fetchone()
+    if row is None:
+        return {"last_id": 0, "sample": None}
+    return {"last_id": row[0], "sample": _flatten(row)[-1]}
 
 
-@app.get("/health")
+@app.get("/api/health")
 def health():
     n, last_recv = db.execute("SELECT COUNT(*), MAX(recv_ts) FROM batch").fetchone()
     devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
