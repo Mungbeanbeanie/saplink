@@ -362,3 +362,33 @@ a.avatar:hover { color: var(--color-neutral-100); }
 .loader-skip { position: absolute; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 html.is-loading, html.is-loading body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .loader { display: none; } }
+
+/* Mascot: a leaf on stick limbs, fixed bottom right. Eyes track the cursor,
+   the free arm waves on an irregular timer. */
+.mascot {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: max(16px, env(safe-area-inset-bottom, 0px)); z-index: 45;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
+}
+.mascot svg { display: block; transform-box: fill-box; transform-origin: 50% 100%; animation: mascotSway 5s ease-in-out infinite alternate; }
+.mascot-face { transform-box: fill-box; transform-origin: 50% 50%; transition: transform 0.12s ease-out; }
+.mascot-pupil { transform-box: fill-box; transform-origin: center; transition: transform 0.07s ease-out; }
+.mascot-arm-r { transform-box: view-box; transform-origin: 80px 55px; }
+.mascot-arm-r.is-waving { animation: mascotWave 1.15s ease-in-out; }
+@keyframes mascotSway { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+@keyframes mascotWave {
+  0% { transform: rotate(0deg); }
+  20% { transform: rotate(-118deg); }
+  36% { transform: rotate(-96deg); }
+  52% { transform: rotate(-128deg); }
+  68% { transform: rotate(-100deg); }
+  84% { transform: rotate(-116deg); }
+  100% { transform: rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot svg { animation: none; }
+  .mascot-face, .mascot-pupil { transition: none; }
+  .mascot-arm-r.is-waving { animation: none; }
+}
+@media (max-width: 520px) { .mascot svg { width: 60px; height: 79px; } }
