@@ -1,32 +1,18 @@
 # saplink-web box:  docker compose -f compose.web.yaml up -d --build
-# Static only. `build` compiles the Vite app into app/frontend/dist, then exits;
-# caddy serves that directory. No node on the host.
+# Static only, no build step -- the frontend (app/frontend/) is plain HTML/CSS/JS,
+# not a Vite project. Caddy serves it directly. No node on the host.
 services:
-  build:
-    image: node:22-alpine
-    working_dir: /app
-    volumes:
-      - ./app/frontend:/app
-    environment:
-      VITE_API_BASE_URL: https://api.${SAPLINK_WEB_DOMAIN:?set SAPLINK_WEB_DOMAIN in .env}
-    # `npm ci` needs a lockfile; fall back to install until one is committed.
-    command: sh -c "npm ci || npm install && npm run build"
-    restart: "no"
-
   caddy:
     image: caddy:2-alpine
     ports: ["80:80", "443:443"]
     volumes:
       - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
-      - ./app/frontend/dist:/srv:ro
+      - ./app/frontend:/srv:ro
       - caddy-data:/data
       - caddy-config:/config
     environment:
       SAPLINK_WEB_DOMAIN: ${SAPLINK_WEB_DOMAIN:?set SAPLINK_WEB_DOMAIN in .env}
     restart: unless-stopped
-    # No depends_on -- deploy.sh runs `build` explicitly before `up -d`, because
-    # compose can treat an already-exited build container as "completed" and
-    # skip it, silently serving the previous bundle.
 
 volumes:
   caddy-data:

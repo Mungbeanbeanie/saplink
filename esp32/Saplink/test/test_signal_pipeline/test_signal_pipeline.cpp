@@ -19,7 +19,7 @@ void test_noise_only_does_not_fire() {
   bool fired = false;
   for (float raw : noise) {
     float filtered = cond.update(raw);
-    if (det.check(filtered, 1.0f)) fired = true;
+    if (det.check(filtered, cond.sigma())) fired = true;
   }
 
   TEST_ASSERT_FALSE(fired);
@@ -36,7 +36,7 @@ void test_recorded_waveform_fires() {
   float sample;
   while (player.nextSample(sample)) {
     float filtered = cond.update(sample);
-    if (det.check(filtered, 1.0f)) fired = true;
+    if (det.check(filtered, cond.sigma())) fired = true;
   }
 
   TEST_ASSERT_TRUE(fired);

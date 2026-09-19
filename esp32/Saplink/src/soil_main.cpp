@@ -6,7 +6,20 @@
 // probes on GPIO, and all four ADS1115 channels. Liveness is judged the same
 // way everywhere: a driven input sits still, a floating one wanders. The
 // spread IS the test, so every reading carries its peak-to-peak.
-static const uint8_t SOIL_PINS[] = {34, 35};  // moisture sensor 1, 2
+static const uint8_t SOIL_PINS[] = {34, 35};  // plant 1, plant 2
+
+// Both sensors measured by air/water dip, not taken from a datasheet: they read
+// HIGH when dry, and the span is only ~1280mV of the 3.3V rail, so neither
+// endpoint is guessable. Per-sensor, not shared -- the two differ by 21mV dry
+// and 45mV wet. Small, but the measurement was free once the probe was in the
+// glass, and a shared constant would quietly bias one plant against the other.
+// Re-measure if a probe is swapped or reseated; these are physical, not code.
+static const float kDryMv[] = {2154.0f, 2175.0f};  // open air
+static const float kWetMv[] = {865.0f, 910.0f};    // fully immersed
+static float moisturePct(int i, float mv) {
+  return constrain((kDryMv[i] - mv) / (kDryMv[i] - kWetMv[i]) * 100.0f, 0.0f,
+                   100.0f);
+}
 static const uint8_t BARE_PINS[] = {32, 36};  // known-empty, the contrast
 static const uint8_t SDA_PIN = 21, SCL_PIN = 22;
 
@@ -67,9 +80,12 @@ void setup() {
 
 void loop() {
   Serial.print("gpio ");
-  for (uint8_t p : SOIL_PINS) {
-    const Stats s = sample(readGpio, p, 16);
-    Serial.printf(" %u=%6.0fmv(p2p%4.0f)", p, s.mean, s.p2p);
+  // Indexed, not range-for: the calibration tables are per-sensor and line up
+  // with SOIL_PINS by position.
+  for (size_t i = 0; i < sizeof(SOIL_PINS); i++) {
+    const Stats s = sample(readGpio, SOIL_PINS[i], 16);
+    Serial.printf(" %u=%6.0fmv(%3.0f%%)(p2p%4.0f)", SOIL_PINS[i], s.mean,
+                  moisturePct(i, s.mean), s.p2p);
   }
   Serial.print("   bare");
   for (uint8_t p : BARE_PINS) {

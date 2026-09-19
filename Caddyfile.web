@@ -1,5 +1,5 @@
-# saplink-web box. Serves the Vite build output (app/frontend/dist), produced by
-# the `build` service in compose.web.yaml on every deploy.
+# saplink-web box. Serves app/frontend/ directly -- static HTML/CSS/JS, no build
+# step (see compose.web.yaml).
 {$SAPLINK_WEB_DOMAIN}, www.{$SAPLINK_WEB_DOMAIN} {
 	root * /srv
 	file_server
