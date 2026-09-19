@@ -51,8 +51,8 @@ float SignalConditioner::update(float raw_mv) {
   // raw `filtered` here was the bug (PeakDetector would see absolute signal
   // level, not deflection, so baseline wander alone could look like a spike).
   float centered = filtered_ - baseline_;
-  variance_ += (centered * centered - variance_) * alpha_;
-  baseline_ += centered * alpha_;
+  variance_ += (centered * centered - variance_) * kVarianceAlpha;
+  baseline_ += centered * kBaselineAlpha;
   // Gates warm(). Without it the counter never moves, warm() is permanently
   // false, and the detector is switched off for the life of the board.
   samples_++;

@@ -39,7 +39,18 @@ class SignalConditioner {
   // Seeded nonzero (not 0) so PeakDetector's 3*sigma threshold isn't ~0 on
   // the first samples, before the EMA below has had time to converge.
   float variance_ = 1.0f;
-  float alpha_ = 0.01f;
+
+  // Two timescales, deliberately split -- this was ONE alpha of 0.01 for both,
+  // which put the baseline's time constant at 1/alpha = 100 samples = ~10s at
+  // the 10Hz sample rate. overview.md puts a real VP at "tens of seconds to
+  // minutes", so the auto-zero was chasing the signal it exists to subtract
+  // from: a slow VP got absorbed into the baseline while fast electrode
+  // polarization drift leaked out into deviation() as a fake one. The baseline
+  // must be slower than the event; the noise estimate does not have to be.
+  // Calibration knobs: raise kBaselineAlpha if the electrode drifts faster than
+  // it settles, lower it if slow VPs are still being absorbed.
+  static constexpr float kBaselineAlpha = 0.001f;  // tau ~1000 samples, ~100s
+  static constexpr float kVarianceAlpha = 0.01f;   // tau ~100 samples, ~10s
 
   bool seeded_ = false;
   float filtered_ = 0.0f;

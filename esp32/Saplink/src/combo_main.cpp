@@ -84,12 +84,42 @@ static bool send_tail = false;    // the batch after a spike carries the VP tail
 static uint32_t last_actuate_ms = 0;
 static uint32_t last_upload_ms = 0;
 
+// One mains period. Averaging ADC reads across exactly this long integrates
+// 60Hz hum to zero -- a boxcar's first null sits at 1/span. Calibration knob:
+// 20000 in a 50Hz country.
+//
+// This is NOT the 60Hz notch that was correctly dropped from Phase 2. A notch
+// is a post-sampling filter and there is nothing left to notch: at a ~10Hz
+// sample rate, 60Hz has already folded down to ~3Hz, in-band and mathematically
+// indistinguishable from a real signal (measured: lag-3 autocorrelation
+// 0.64-0.97 on every quiet batch, 1-4mV peak-to-peak, which the 5-sample median
+// does not touch). Aliasing is irreversible, so the hum has to die before the
+// sample exists -- which means during the conversion, not after it.
+static const uint32_t kMainsAvgUs = 16667;
+
 // THE SEAM, now crossed: the ADS1115 is wired and A2-A3 is read for real. The
 // synthetic trace stays as the fallback so a loose wire degrades the demo to a
 // realistic shape rather than a flat line, and SRC records which one produced
 // the batch -- on stage a live trace must never be mistaken for a simulated one.
 static float readMv(uint32_t n) {
-  if (ads_ok) return ads.computeVolts(ads.readADC_Differential_2_3()) * 1000.0f;
+  if (ads_ok) {
+    // Time-boxed rather than a fixed read count: at 50kHz the library busy-polls
+    // the conversion-ready bit over I2C, so per-read time is not deterministic
+    // and counting conversions cannot reliably land on a whole mains cycle.
+    // micros() can. The do/while overshoots by at most one read, which across
+    // plausible per-read times leaves the sample centres spanning 0.90-0.96 of a
+    // cycle -- 19 to 27dB of rejection, turning 2mV of hum into under 0.25mV.
+    const uint32_t t0 = micros();
+    float sum = 0.0f;
+    uint32_t n_reads = 0;
+    do {
+      sum += ads.computeVolts(ads.readADC_Differential_2_3()) * 1000.0f;
+      n_reads++;
+    } while (micros() - t0 < kMainsAvgUs);
+    // Averaging also divides the per-conversion noise by sqrt(n_reads), which
+    // is what pays for running the ADC at 860SPS instead of the quieter default.
+    return sum / n_reads;
+  }
   float wander = 3.0f * sinf(n * 0.004f);
   float spike = (n % 200) < 8 ? 45.0f : 0.0f;
   float noise = 0.4f * (random(-100, 101) / 100.0f);
@@ -221,6 +251,12 @@ void setup() {
   // ~30x headroom while still resolving the sub-mV noise floor that the 3-sigma
   // threshold is computed from.
   ads.setGain(GAIN_FOUR);
+  // 860SPS, not the 128SPS default. readMv() averages across one mains period,
+  // and at 128SPS a conversion costs ~8ms -- only two of them fit in 16.667ms,
+  // which spans barely half a cycle and rejects almost nothing. At 860SPS a read
+  // costs ~3ms, so ~6 land in the window. The per-conversion noise is higher at
+  // this rate; the sqrt(6) from averaging gives it back.
+  ads.setDataRate(RATE_ADS1115_860SPS);
   SRC = ads_ok ? "ads1115" : "sim";
   Serial.printf("ads1115 @0x48: %s -> src=%s\n", ads_ok ? "ok" : "ABSENT", SRC);
 
@@ -253,6 +289,14 @@ void loop() {
   float peak_mv = 0.0f;
   float threshold_mv = 0.0f;
   uint32_t spike_ms = 0;
+
+  // Deadline, not a fixed post-read delay. readMv() now costs ~17ms, so
+  // delay(PERIOD_MS) would make the true sample period ~117ms while Contract A
+  // keeps claiming 100 -- and the dashboard timestamps every sample as
+  // t_ms + i*period_ms, so that gap compounds across a batch. PeakDetector's
+  // hold gate is counted in samples too, which only means a duration if the
+  // period is what it says it is.
+  uint32_t next_ms = t_ms;
 
   for (size_t i = 0; i < BATCH_N; i++) {
     float raw = readMv(seq * BATCH_N + i);
@@ -290,7 +334,11 @@ void loop() {
       peak_mv = det.lastPeak();
       threshold_mv = det.lastThreshold();
     }
-    delay(PERIOD_MS);
+    // Signed comparison: if a sample overran its slot the wait is negative and
+    // this must fall through immediately, not wrap to a 49-day delay.
+    next_ms += PERIOD_MS;
+    int32_t wait_ms = (int32_t)(next_ms - millis());
+    if (wait_ms > 0) delay((uint32_t)wait_ms);
   }
   const uint32_t soil_mv = readSoilMv();
 

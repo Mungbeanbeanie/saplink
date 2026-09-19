@@ -171,6 +171,56 @@ void test_peak_reported_when_vp_straddles_batch_boundary() {
   TEST_ASSERT_TRUE(fired);
 }
 
+// The case that actually ran the pump. Electrode polarization drifts one way
+// for tens of seconds while aliased 60Hz hum -- a ~3-sample oscillation the
+// median filter does not remove -- rides on top of it. Every dip in that hum is
+// a >=30% "rebound" off the running peak, so the old detector fired on the
+// first one: 11 alerts in 21 minutes, each with a peak 1.01-1.3x its own
+// threshold. Nothing here recovers, so nothing here is a VP.
+void test_drift_with_hum_does_not_fire() {
+  SignalConditioner cond;
+  PeakDetector det;
+
+  for (int i = 0; i < 400; i++) cond.update(30.0f);  // settle, sigma converges
+
+  bool fired = false;
+  for (int i = 0; i < 400; i++) {
+    // -4mV over 400 samples, matching the measured slide on batches 746-748,
+    // plus 2mV peak-to-peak of period-3 hum.
+    const float drift = -0.01f * i;
+    const float hum = (i % 3 == 2) ? -1.0f : 0.5f;
+    cond.update(30.0f + drift + hum);
+    if (cond.warm() && det.check(cond.deviation(), cond.sigma())) fired = true;
+  }
+
+  TEST_ASSERT_FALSE(fired);
+}
+
+// The floor has to reject on amplitude alone, independently of shape. This is a
+// textbook deflect-hold-recover VP in every respect except size -- sustained
+// well past the duration gate, recovering fully -- at the 0.4-1.0mV scale the
+// hardware was dosing a plant over. 3sigma is self-referential, so on a quiet
+// electrode it will always find something this big eventually.
+void test_sub_millivolt_vp_shape_does_not_fire() {
+  SignalConditioner cond;
+  PeakDetector det;
+
+  for (int i = 0; i < 400; i++) cond.update(30.0f);
+
+  bool fired = false;
+  for (int i = 0; i < 120; i++) {
+    // 0.6mV deflection held for 40 samples, then recovered over 40 -- the shape
+    // passes, the amplitude must not.
+    float d = 0.0f;
+    if (i >= 20 && i < 60) d = -0.6f;
+    else if (i >= 60 && i < 100) d = -0.6f + 0.015f * (i - 60);
+    cond.update(30.0f + d);
+    if (cond.warm() && det.check(cond.deviation(), cond.sigma())) fired = true;
+  }
+
+  TEST_ASSERT_FALSE(fired);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_noise_only_does_not_fire);
@@ -180,5 +230,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_warmup_suppresses_detection);
   RUN_TEST(test_deflection_on_top_of_offset_fires);
   RUN_TEST(test_peak_reported_when_vp_straddles_batch_boundary);
+  RUN_TEST(test_drift_with_hum_does_not_fire);
+  RUN_TEST(test_sub_millivolt_vp_shape_does_not_fire);
   return UNITY_END();
 }
