@@ -244,7 +244,7 @@
         '<section id="join" class="sec-join"><div class="join-inner">' +
         '<h2>Put a router on your first plant.</h2>' +
         '<p class="lead">The readings are open to everyone. Sign in with Google to acknowledge signals and send a test signal across the plant network.</p>' +
-        '<div class="btn-row"><a href="#/dashboard" class="btn btn-primary btn-lg">Open the dashboard</a>' + S.googleButton(true) + '</div>' +
+        '<div class="btn-row"><a href="#/dashboard" class="btn btn-primary btn-lg">Open the dashboard</a><span class="signin-slot signin-slot-lg" id="join-signin"></span></div>' +
         '<form class="join-form" id="join-form"><input class="input" id="join-email" type="email" required placeholder="you@example.com" aria-label="Email address">' +
         '<button type="submit" class="btn btn-primary btn-lg">Request a router</button></form>' +
         '<p class="form-note" id="join-note">No spam. One note when routers ship in your area.</p></div></section>' +
@@ -261,6 +261,10 @@
 
     mount: function (root) {
       buildScene(root.querySelector('#scene'));
+      if (!S.auth.get()) {
+        S.auth.renderButton(root.querySelector('#hero-signin'), { size: 'large', shape: 'pill' });
+        S.auth.renderButton(root.querySelector('#join-signin'), { size: 'large', shape: 'pill' });
+      }
 
       var state = { health: null, err: false };
       var $ = function (id) { return root.querySelector('#' + id); };

@@ -29,10 +29,13 @@
   <main id="view"></main>
 </div>
 
-<!-- Load order: art + config, then one file per page, then the router. To add a page, add a
+<!-- Load order: Google Identity Services, then art + config, then auth (needs config's
+     googleClientId), then one file per page, then the router. To add a page, add a
      js/pages/<name>.js that registers Saplink.pages.<name>, list it here, and add its route in app.js. -->
+<script src="https://accounts.google.com/gsi/client"></script>
 <script src="js/svg.js"></script>
 <script src="js/config.js"></script>
+<script src="js/auth.js"></script>
 <script src="js/store.js"></script>
 <script src="js/pages/landing.js"></script>
 <script src="js/pages/how.js"></script>

@@ -12,6 +12,15 @@ Saplink.config = {
   // When these are not reachable the pages fall back to a simulated preview feed.
   apiBase: 'https://api.saplink.us',
 
+  // Google OAuth Web Client ID for real sign-in (js/auth.js). Must be a Web
+  // application OAuth client at console.cloud.google.com with
+  // https://saplink.us and https://www.saplink.us as Authorized JavaScript
+  // origins (no redirect URI needed), and must exactly match the api box's
+  // GOOGLE_CLIENT_ID .env value (see .claude/plan.md Phase 7's Gotchas) --
+  // same client id on both sides or every token fails verification.
+  // Left as this placeholder, sign-in buttons simply don't render.
+  googleClientId: 'REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID',
+
   // Landing-page canopy scene.
   scene: {
     branchLayout: 'Overhead canopy', // 'Overhead canopy' | 'Left arch' | 'Corner diagonal'

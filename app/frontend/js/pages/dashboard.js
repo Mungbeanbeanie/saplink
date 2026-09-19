@@ -2,7 +2,7 @@
    to a simulated feed when it is not reachable. */
 (function (S) {
   var roster = S.roster;
-  var st, root, tickTimer, healthTimer, lastId = 0, els = {};
+  var st, root, tickTimer, healthTimer, lastId = 0, els = {}, authSubscribed = false;
 
   var TONE = { ok: ['var(--color-accent-2-200)', 'var(--color-accent-2-900)', '#56633f'], quiet: ['var(--color-accent-200)', 'var(--color-accent-900)', '#c67139'] };
 
@@ -361,11 +361,16 @@
       q('replay').addEventListener('click', function () {
         if (!st.signedIn) return;
         setState({ replayNote: 'Sending…' });
-        S.api('/api/alerts/manual', { method: 'POST' }).then(
+        S.api('/api/alerts/manual', { method: 'POST', headers: { Authorization: 'Bearer ' + S.auth.token() } }).then(
           function () { setState({ replayNote: 'Test signal sent', acked: true }); },
           function () { setState({ replayNote: 'Relay not switched on yet — shown as a preview', acked: true }); }
         );
       });
+
+      if (!authSubscribed) {
+        authSubscribed = true;
+        S.auth.onChange(function () { if (root) setState({ signedIn: S.auth.get() }); });
+      }
 
       update();
       tick(); pollHealth();

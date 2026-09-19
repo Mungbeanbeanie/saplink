@@ -1,21 +1,7 @@
 /* Shell: sign-in state, header, and the hash router.
    Routes:  #/  landing   #/how-it-works   #/dashboard   #/account   */
 (function (S) {
-  var AUTH_KEY = 'saplink.signedIn';
-  var memAuth = false;
-
-  S.user = { name: 'Rowan Ashfield', email: 'r.ashfield@wealdtrust.org', role: 'Conservation lead', since: 'Joined March 2026' };
   S.initials = function (n) { return n.split(/\s+/).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase(); };
-
-  S.auth = {
-    get: function () { try { return localStorage.getItem(AUTH_KEY) === '1'; } catch (e) { return memAuth; } },
-    signIn: function () { memAuth = true; try { localStorage.setItem(AUTH_KEY, '1'); } catch (e) {} },
-    signOut: function () { memAuth = false; try { localStorage.removeItem(AUTH_KEY); } catch (e) {} }
-  };
-
-  S.googleButton = function (large) {
-    return '<a href="#/account" data-signin class="btn btn-secondary btn-light btn-google' + (large ? ' btn-lg' : '') + '">' + S.svg.google + 'Sign in</a>';
-  };
   S.copyright = function () { return '<p class="copyright">© Saplink 2026</p>'; };
 
   var ROUTES = { '': 'landing', 'how-it-works': 'how', dashboard: 'dashboard', account: 'account' };
@@ -38,13 +24,19 @@
     var links = NAV.map(function (n) {
       return '<a class="nav-link' + (n.route === current ? ' is-active' : '') + '" href="' + n.href + '">' + n.label + '</a>';
     }).join('');
-    var auth = (S.auth.get() || current === 'account')
-      ? '<a class="avatar" href="#/account" title="' + S.user.name + '">' + S.initials(S.user.name) + '</a>'
-      : S.googleButton(false);
+    var signedIn = S.auth.get();
+    var auth;
+    if (signedIn || current === 'account') {
+      var label = S.auth.email() || 'Account';
+      auth = '<a class="avatar" href="#/account" title="' + label + '">' + S.initials(label.split('@')[0].replace(/[._-]+/g, ' ')) + '</a>';
+    } else {
+      auth = '<span id="hdr-signin" class="signin-slot"></span>';
+    }
     headerSlot.innerHTML =
       '<header class="site-header' + (current === 'landing' ? ' is-scene' : '') + '">' +
       '<a class="brand" href="#/">' + S.svg.logo + 'Saplink</a>' +
       '<nav class="site-nav">' + links + auth + '</nav></header>';
+    if (!signedIn && current !== 'account') S.auth.renderButton(document.getElementById('hdr-signin'), { size: 'medium' });
   }
 
   function render() {
@@ -70,7 +62,6 @@
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a');
     if (!a) return;
-    if (a.hasAttribute('data-signin')) { S.auth.signIn(); setTimeout(renderHeader, 0); }
     var target = a.getAttribute('data-scroll');
     if (target) {
       e.preventDefault();
@@ -83,6 +74,7 @@
   });
 
   S.refreshHeader = renderHeader;
+  S.auth.onChange(renderHeader);
   window.addEventListener('hashchange', render);
   render();
 })(window.Saplink);
