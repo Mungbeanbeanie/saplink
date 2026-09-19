@@ -11,19 +11,21 @@ include/
 src/
   diagnostic_main.cpp   --> (none; standalone I2C scanner, no shared lib deps)
   sensor_main.cpp        --> include/secrets.h   (built — WiFi connect + batch + HTTPS POST, all inline, no shared lib)
-  combo_main.cpp          --> include/secrets.h, lib/saplink_common/signal_conditioning.h, lib/saplink_common/peak_detector.h, lib/saplink_common/recorded_signal.h   (planned — primary target)
+  combo_main.cpp          --> include/secrets.h, lib/saplink_common/signal_conditioning.h, lib/saplink_common/peak_detector.h, lib/saplink_common/recorded_signal.h   (planned — primary target; not yet wired to lib/saplink_common/cloud_client.h, that lands with Phase 4's actuate half)
   actuator_main.cpp       --> include/secrets.h   (planned — stretch)
 
-lib/saplink_common/       (does not exist yet — created by Phase 2's first file)
-  signal_conditioning.h/.cpp   (leaf — no internal deps)
-  peak_detector.h/.cpp         (leaf — no internal deps)
-  recorded_signal.h/.cpp       (leaf — no internal deps)
+lib/saplink_common/
+  packet_schema.h               (leaf — Contract B's alert struct, no internal deps)
+  signal_conditioning.h/.cpp    (leaf — no internal deps)
+  peak_detector.h/.cpp          (leaf — no internal deps)
+  recorded_signal.h/.cpp        (leaf — no internal deps)
+  cloud_client.h/.cpp           --> packet_schema.h, include/secrets.h   (built — alert-plane HTTPS client; excluded from env:native's build, needs Arduino/WiFi, not testable off-device)
 
 test/
   test_signal_pipeline/test_signal_pipeline.cpp  --> lib/saplink_common/{signal_conditioning,peak_detector,recorded_signal}.h  (env:native only)
 ```
 
-Envs (`platformio.ini`): `diagnostic` builds `diagnostic_main.cpp` only; `sensor`/`combo`/`actuator` each build their own `src/*_main.cpp` (plus `lib/saplink_common/**` once it exists); `native` builds `test/` + `lib/saplink_common/**` only (no `src/*_main.cpp`, since those require ESP32 hardware APIs). No `cloud_client.h`/`packet_schema.h` — both dropped, see `plan.md` Phase 1/3.
+Envs (`platformio.ini`): `diagnostic` builds `diagnostic_main.cpp` only; `sensor`/`combo`/`actuator` each build their own `src/*_main.cpp` (plus `lib/saplink_common/**`); `native` builds `test/` + `lib/saplink_common/**` minus `cloud_client.*` (no `src/*_main.cpp`, since those require ESP32 hardware APIs, and no `cloud_client.*`, since it requires Arduino/WiFi headers that don't exist under `platform = native`).
 
 ## Backend (`app/backend/`)
 
@@ -36,6 +38,8 @@ app/backend/
 ```
 
 `main.py`'s `Batch` Pydantic model is the single source of truth for the wire schema — it must stay in sync with `esp32/Saplink/src/sensor_main.cpp`'s (and eventually `combo_main.cpp`'s) hand-built JSON by hand, no code generation between the two languages. Canonical description of the contract: `overview.md`'s "Interface Schema" bullet.
+
+`main.py` also gains the live-signal classifier (Phase 5, not yet built) — a Python port of `esp32/Saplink/lib/saplink_common/peak_detector.h`'s 3σ+rebound-ratio algorithm, run against each ingested `Batch.mv` per-device against a running EMA baseline/sigma it maintains itself (in-memory or a small table, TBD at implementation time). Still one file, no new module — matches the existing no-models/schemas/routes-split convention. On a fire it writes a pending Contract B alert row for the alert-plane routes to serve.
 
 ## Deploy infrastructure (repo root)
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cmath>
 
 float SignalConditioner::median() const {
   int n = median_count_;
@@ -10,6 +11,8 @@ float SignalConditioner::median() const {
   std::sort(sorted, sorted + n);
   return sorted[n / 2];
 }
+
+float SignalConditioner::sigma() const { return std::sqrt(variance_); }
 
 float SignalConditioner::update(float raw_mv) {
 
@@ -31,26 +34,12 @@ float SignalConditioner::update(float raw_mv) {
   if (median_count_ < kMedianWindow) median_count_++;
 
   float filtered = median();
-  // Against the baseline as it stood BEFORE this sample moved it: the question
-  // is how far this reading departs from what was expected, not from a baseline
-  // already partly dragged toward it.
-  const float dev = filtered - baseline_;
-
-  baseline_ += (filtered - baseline_) * alpha_;
-
-  // Mean absolute deviation scaled to sigma (1.2533 * MAD for Gaussian noise).
-  // Cheaper than RMS and far less sensitive to an outlier surviving the median.
-  //
-  // Running mean until the EMA's own alpha overtakes it (1/n falls below
-  // kSigmaAlpha at n=1000). Seeding mad_ at 0 and creeping up at alpha 0.001
-  // leaves sigma badly under-estimated for the first ~100s -- and on hardware
-  // every single batch came back SPIKE, because 3*sigma of a half-formed sigma
-  // is cleared by ordinary drift. The baseline had this same cold start; this
-  // is the same bug in the other estimator.
-  samples_++;
-  mad_ += (std::fabs(dev) - mad_) * std::fmax(kSigmaAlpha, 1.0f / samples_);
-  sigma_ = std::fmax(mad_ * 1.2533f, kSigmaFloorMv);
-
-  filtered_ = filtered;
-  return filtered;
+  // Deflection from baseline, computed BEFORE this sample updates baseline_ --
+  // this is the auto-zero subtraction the header/plan.md describe; returning
+  // raw `filtered` here was the bug (PeakDetector would see absolute signal
+  // level, not deflection, so baseline wander alone could look like a spike).
+  float centered = filtered - baseline_;
+  variance_ += (centered * centered - variance_) * alpha_;
+  baseline_ += centered * alpha_;
+  return centered;
 }

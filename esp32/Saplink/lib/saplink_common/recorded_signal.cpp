@@ -31,7 +31,11 @@ void RecordedSignalPlayer::trigger() {
 
 bool RecordedSignalPlayer::nextSample(float &out_mv) {
   if (armed_ && index_ < RECORDED_VP_WAVEFORM_LEN) {
-    out_mv = pgm_read_float(&RECORDED_VP_WAVEFORM[index_++]);
+    // index_++ hoisted out of the macro arg -- pgm_read_float is a macro on
+    // some cores and a side-effecting arg risks double-evaluation if it ever
+    // expands to reference addr twice.
+    size_t i = index_++;
+    out_mv = pgm_read_float(&RECORDED_VP_WAVEFORM[i]);
     return true;
   }
   armed_ = false;

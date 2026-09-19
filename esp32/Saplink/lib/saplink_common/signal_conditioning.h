@@ -10,6 +10,7 @@ class SignalConditioner {
  public:
   float update(float raw_mv);
   float baseline() const { return baseline_; }
+  float sigma() const;
 
 
   // What the frontend plots. The electrode carries a tens-of-mV standing
@@ -36,6 +37,9 @@ class SignalConditioner {
   int median_next_ = 0;
 
   float baseline_ = 0.0f;
+  // Seeded nonzero (not 0) so PeakDetector's 3*sigma threshold isn't ~0 on
+  // the first samples, before the EMA below has had time to converge.
+  float variance_ = 1.0f;
   float alpha_ = 0.01f;
 
   bool seeded_ = false;

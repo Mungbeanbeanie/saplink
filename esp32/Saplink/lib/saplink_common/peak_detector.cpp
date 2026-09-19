@@ -40,6 +40,5 @@ bool PeakDetector::check(float conditioned_mv, float baseline_sigma) {
     }
   }
 
-  last_mv_ = conditioned_mv;
   return false;
 }

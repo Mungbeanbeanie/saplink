@@ -15,5 +15,4 @@ class PeakDetector {
 
   State state_ = State::kIdle;
   float peak_mv_ = 0.0f;
-  float last_mv_ = 0.0f;
 };
