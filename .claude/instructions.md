@@ -4,7 +4,7 @@
 - If comments become inaccurate, flag and defer updates to the user.
 
 ## Memory Rules
-- All project memory lives in `.claude/` only. No new `.md` files without user approval. Use `overview.md` for source of truth, `plan.md` for build status and checklist, `architecture.md` for file structure and internal crate-to-crate dependency graph, `currentDev.md` for active tasks, `branchDep.md` for external/third-party crate version tracking and pending version bumps across the workspace.
+- All project memory lives in `.claude/` only. No new `.md` files without user approval. Use `overview.md` for source of truth, `plan.md` for build status and checklist, `architecture.md` for file/module structure and internal component-to-component dependency graph, `currentDev.md` for active tasks, `branchDep.md` for external/third-party library and board-package version tracking and pending version bumps across the project.
 
 ## Keyword Rules
 -  `stage` is keyword for the plan for the next change (either code or file diff) to be written to currentDev.md
