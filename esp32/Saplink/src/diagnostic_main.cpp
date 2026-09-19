@@ -88,6 +88,34 @@ static void capacitanceProbe() {
   Serial.println("   (18/19/23 = bare, GPIO2 = loaded control)");
 }
 
+// The relay module runs off VIN through a 5V converter, not the ESP32's 3.3V
+// rail, so its IN pin can idle at whatever ITS supply is -- and ESP32 GPIOs are
+// NOT 5V tolerant. Read-only: only ever sets input modes, so it cannot fire the
+// pump. One read cannot tell a floating pin from a driven one, but three can:
+// a floating pin follows whichever internal pull is applied, a driven one
+// ignores both and reports the same level either way.
+static void actuatorProbe() {
+  const uint8_t pins[] = {25, 26};
+  for (uint8_t p : pins) {
+    analogSetPinAttenuation(p, ADC_11db);  // full span, else a high pin under-reads
+    pinMode(p, INPUT);
+    delay(5);
+    const uint32_t mv = analogReadMilliVolts(p);
+    pinMode(p, INPUT_PULLUP);
+    delay(5);
+    const int up = digitalRead(p);
+    pinMode(p, INPUT_PULLDOWN);
+    delay(5);
+    const int dn = digitalRead(p);
+    pinMode(p, INPUT);
+    Serial.printf("GPIO%u: idle=%4lumv  pullup->%d pulldown->%d  %s\n", p, mv, up,
+                  dn,
+                  up != dn ? "floating (follows internal pull)"
+                           : (up ? "DRIVEN HIGH externally -- check its voltage"
+                                 : "DRIVEN LOW externally"));
+  }
+}
+
 static void sweep() {
   // output-capable pins only; 34-39 are input-only and cannot be driven low.
   // Anything attached adds capacitance, so a pin reading well above the
@@ -202,6 +230,7 @@ void loop() {
   else Serial.printf("CHECK WIRE: %s%s not reaching the module\n",
                      sda_up ? "" : "SDA(21) ", scl_up ? "" : "SCL(22)");
   sweep();
+  actuatorProbe();
   capacitanceProbe();
   scan(SDA_PIN, SCL_PIN, 100000);
   // 10kHz: the ESP32's internal ~45k pull-ups are marginal at 100kHz if the

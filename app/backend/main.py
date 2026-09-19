@@ -45,6 +45,13 @@ db.execute(
          t_ms INTEGER, period_ms INTEGER, baseline_mv REAL, event TEXT,
          src TEXT, mv TEXT)"""
 )
+# soil_mv arrived after the first deployments, and CREATE TABLE IF NOT EXISTS
+# will not add a column to a table that already exists -- so an existing
+# saplink.db needs this or every insert fails on an unknown column.
+try:
+    db.execute("ALTER TABLE batch ADD COLUMN soil_mv INTEGER")
+except sqlite3.OperationalError:
+    pass  # column already there; ALTER is the only way to ask
 db.commit()
 
 Millivolts = Annotated[float, Field(ge=-5000, le=5000)]
@@ -61,6 +68,12 @@ class Batch(BaseModel):
     event: Optional[Literal["spike"]] = None
     src: Literal["sim", "ads1115"]  # "sim" until an ADC is actually wired
     mv: list[Millivolts] = Field(max_length=256)
+    # Raw ADC millivolts off the soil probe, NOT a moisture percentage -- that
+    # conversion needs a two-point calibration of the physical probe and does
+    # not belong in the wire format. Optional with a default so firmware built
+    # before this field still validates: additive, so the contract above stays
+    # frozen rather than changed.
+    soil_mv: Optional[int] = Field(default=None, ge=0, le=5000)
 
 
 app = FastAPI(title="saplink")
@@ -75,7 +88,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-COLS = "id,device,t_ms,period_ms,baseline_mv,event,src,mv"
+COLS = "id,device,t_ms,period_ms,baseline_mv,event,src,mv,soil_mv"
 
 
 def _auth(authorization: Optional[str]) -> None:
@@ -123,19 +136,23 @@ def _rows(since_id: int, limit: int):
 def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     _auth(authorization)
     cur = db.execute(
-        "INSERT INTO batch(recv_ts,device,seq,t_ms,period_ms,baseline_mv,event,src,mv)"
-        " VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO batch(recv_ts,device,seq,t_ms,period_ms,baseline_mv,event,src,mv,"
+        "soil_mv) VALUES(?,?,?,?,?,?,?,?,?,?)",
         (time.time(), b.device, b.seq, b.t_ms, b.period_ms, b.baseline_mv,
-         b.event, b.src, json.dumps(b.mv)),
+         b.event, b.src, json.dumps(b.mv), b.soil_mv),
     )
     db.commit()
     return {"id": cur.lastrowid, "n": len(b.mv)}
 
 
 def _flatten(row):
-    bid, device, t_ms, period_ms, baseline, event, src, mv = row
+    bid, device, t_ms, period_ms, baseline, event, src, mv, soil_mv = row
+    # soil_mv is per-batch, not per-sample, and rides along on each flattened
+    # sample exactly as baseline_mv/event/src already do -- the dashboard reads
+    # whichever sample it is drawing and gets the batch context with it.
     return [{"batch_id": bid, "device": device, "t_ms": t_ms + i * period_ms,
-             "mv": v, "baseline_mv": baseline, "event": event, "src": src}
+             "mv": v, "baseline_mv": baseline, "event": event, "src": src,
+             "soil_mv": soil_mv}
             for i, v in enumerate(json.loads(mv))]
 
 

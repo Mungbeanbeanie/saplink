@@ -35,7 +35,7 @@ app/backend/
   test_ingest.py     --> main.py (imports `app` directly, drives it with FastAPI's TestClient)
 ```
 
-`main.py`'s `Batch` Pydantic model is the single source of truth for the wire schema — it must stay in sync with `esp32/Saplink/src/sensor_main.cpp`'s (and eventually `combo_main.cpp`'s) hand-built JSON by hand, no code generation between the two languages. Canonical description of the contract: `esp32/Saplink/CLAUDE.md`'s "frozen wire format" section.
+`main.py`'s `Batch` Pydantic model is the single source of truth for the wire schema — it must stay in sync with `esp32/Saplink/src/sensor_main.cpp`'s (and eventually `combo_main.cpp`'s) hand-built JSON by hand, no code generation between the two languages. Canonical description of the contract: `overview.md`'s "Interface Schema" bullet.
 
 ## Deploy infrastructure (repo root)
 
@@ -58,4 +58,4 @@ index.html   --> config.js (script tag) + inline/plain JS fetch-polling logic; n
 
 ## Cross-cutting dependency (not a file import, a network contract)
 
-`esp32/Saplink/src/sensor_main.cpp` (and eventually `combo_main.cpp`) <--HTTP--> `app/backend/main.py`'s `Batch` model <--HTTP--> `app/frontend`'s fetch calls against `window.SAPLINK_API`. All three must agree on the same JSON shape — canonically documented in `esp32/Saplink/CLAUDE.md`'s "frozen wire format" section (update there first, then this file and `plan.md`, to avoid the same fields drifting across three separate descriptions of one contract).
+`esp32/Saplink/src/sensor_main.cpp` (and eventually `combo_main.cpp`) <--HTTP--> `app/backend/main.py`'s `Batch` model <--HTTP--> `app/frontend`'s fetch calls against `window.SAPLINK_API`. All three must agree on the same JSON shape — canonically documented in `overview.md`'s "Interface Schema" bullet (update there first, then this file and `plan.md`, to avoid the same fields drifting across three separate descriptions of one contract).
