@@ -185,9 +185,21 @@ def _google_user(authorization: Optional[str]) -> str:
     return email
 
 
-def _rows(since_id: int, limit: int):
+def _rows(since_id: int, limit: int, device: Optional[str] = None):
+    # device=None means every device -- the unfiltered behaviour every caller
+    # relied on before one board started sensing two plants and posting under
+    # two device names. One SQL text with `:device IS NULL OR device=:device`
+    # rather than two query strings, so the ORDER BY/LIMIT that make the
+    # dashboard's since_id cursor work only exist in one place.
+    #
+    # The cursor stays correct under filtering: last_id becomes the max id
+    # among MATCHING rows, and the other device's interleaved rows are skipped
+    # by id>:since on the next poll rather than re-read. No gap, no duplicate.
     return db.execute(
-        f"SELECT {COLS} FROM batch WHERE id>? ORDER BY id LIMIT ?", (since_id, limit)
+        f"SELECT {COLS} FROM batch "
+        "WHERE id>:since AND (:device IS NULL OR device=:device) "
+        "ORDER BY id LIMIT :limit",
+        {"since": since_id, "device": device, "limit": limit},
     ).fetchall()
 
 
@@ -224,19 +236,34 @@ def _flatten(row):
 
 
 @app.get("/api/readings/history")
-def history(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200):
-    """Flattened samples. `limit` counts BATCHES (~32 samples each), not samples."""
+def history(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200,
+            device: Optional[str] = None):
+    """Flattened samples. `limit` counts BATCHES (~32 samples each), not samples.
+
+    `device` filters to one plant's stream. Omitted means every device, which
+    is what this returned before there were two -- so the param is additive and
+    nothing built against the old shape changed.
+    """
     out, last = [], since_id
-    for row in _rows(since_id, limit):
+    for row in _rows(since_id, limit, device):
         last = row[0]
         out += _flatten(row)
     return {"last_id": last, "samples": out}
 
 
 @app.get("/api/readings/latest")
-def latest():
-    """Most recent single sample, for the dashboard's live panel + alert banner."""
-    row = db.execute(f"SELECT {COLS} FROM batch ORDER BY id DESC LIMIT 1").fetchone()
+def latest(device: Optional[str] = None):
+    """Most recent single sample, for the dashboard's live panel + alert banner.
+
+    Same optional `device` filter as /history: without it this is the newest
+    batch from ANY device, which with two plants on one board alternates
+    between them.
+    """
+    row = db.execute(
+        f"SELECT {COLS} FROM batch "
+        "WHERE (:device IS NULL OR device=:device) ORDER BY id DESC LIMIT 1",
+        {"device": device},
+    ).fetchone()
     if row is None:
         return {"last_id": 0, "sample": None}
     return {"last_id": row[0], "sample": _flatten(row)[-1]}
@@ -297,9 +324,21 @@ def pending_alert(authorization: Annotated[Optional[str], Header()] = None):
     treats any non-200 as "nothing pending", so an empty queue and a transport
     failure land on the same harmless branch.
 
-    ponytail: returns the oldest un-acked alert whatever raised it -- one board
-    is both ends of the route today, so the loopback IS the demo. A dedicated
-    plant-2 board wants a target filter here.
+    ponytail: returns the oldest un-acked alert whatever raised it. node_id now
+    distinguishes TWO origins on one board, and there is still deliberately no
+    target filter: _raise_alert()'s one-un-acked-at-a-time rule plus the
+    firmware's 30s kMinActuateGapMs already cap the pump at one dose per 30s
+    however many plants are firing, so a filter would add routing state and buy
+    no safety. One board is still both ends of the route, so the loopback IS
+    the demo.
+
+    Known cost, not a bug: a second plant's event raised INSIDE the un-acked
+    window of the first is dropped by that dedupe, not queued -- so it is
+    missing from /api/alerts entirely rather than merely delayed. The window is
+    one firmware cycle (~3.2s plus network), so collisions are rare. Upgrade
+    when it bites: make _raise_alert's dedupe per-node (`AND node_id=?`). That
+    is one clause, but it doubles the worst-case queue depth, so make the
+    change with the pump in front of you.
     """
     _auth(authorization)
     row = db.execute(

@@ -207,6 +207,33 @@ def test_soil_mv_optional():
     assert all(x["soil_mv"] is None for x in s), s
 
 
+def test_device_filter_splits_the_two_plants():
+    # One board posts both plants under different device names, so the two
+    # streams interleave in the table by id. Filtering is what keeps the
+    # dashboard's chart from splicing plant 2's samples into plant 1's trace.
+    r1 = c.post("/api/readings", json=batch(seq=30, device="sense-1", mv=[1.0]),
+                headers=AUTH)
+    r2 = c.post("/api/readings", json=batch(seq=30, device="sense-2", mv=[2.0]),
+                headers=AUTH)
+    assert r1.status_code == 200 and r2.status_code == 200, (r1.text, r2.text)
+    since = r1.json()["id"] - 1
+
+    both = c.get(f"/api/readings/history?since_id={since}").json()["samples"]
+    assert [x["device"] for x in both] == ["sense-1", "sense-2"], both
+
+    # Omitting the param must stay byte-identical to the pre-filter behaviour;
+    # that is the whole claim that makes this change additive.
+    only2 = c.get(f"/api/readings/history?since_id={since}&device=sense-2").json()
+    assert [x["mv"] for x in only2["samples"]] == [2.0], only2
+    # last_id is the max id among MATCHING rows, so the next poll skips
+    # sense-1's interleaved row rather than re-reading it.
+    assert only2["last_id"] == r2.json()["id"], only2
+
+    assert c.get("/api/readings/latest?device=sense-1").json()["sample"]["mv"] == 1.0
+    assert c.get(f"/api/readings/history?since_id={since}&device=nope"
+                 ).json()["samples"] == []
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
