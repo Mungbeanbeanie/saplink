@@ -64,6 +64,8 @@ src/main.jsx             --> react-router-dom, src/pages/*.jsx, src/components/{
 src/lib/api.js            (leaf — API_BASE from VITE_API_BASE_URL, apiFetch(path,opts))
 src/lib/auth.js          --> src/lib/api.js   (real Google Identity Services; module-level singleton + useAuth() via useSyncExternalStore, since GIS's callback fires outside React's render cycle)
 src/lib/news.js          --> src/lib/api.js   (useNews(limit) hook, polls GET /api/news)
+src/lib/network.js       --> src/lib/api.js   (useNetwork() hook, polls GET /api/network -- density + per-device activity for the site-map graph)
+src/lib/statusHistory.js --> src/lib/api.js   (useStatusHistory(device,hours) hook, polls GET /api/status_history -- hour-bucketed batch/event counts for the "Status over time" strip)
 src/lib/useHealth.js     --> src/lib/api.js   (GET /api/health polling hook)
 src/lib/css.js            (leaf — CSS-declaration-string -> React style object helper)
 src/data/roster.js         (leaf — the 5-plant fixture: dashboard map/tabs, account's router list; not reconciled with /api/health's real `devices`)
@@ -76,7 +78,7 @@ src/art/artwork.js                     (leaf — static SVG art strings)
 
 src/pages/Landing.jsx     --> src/components/Header.jsx, src/components/GoogleSignInButton.jsx, src/scene/BranchScene.jsx, src/lib/useHealth.js
 src/pages/HowItWorks.jsx --> src/components/Header.jsx   (static)
-src/pages/Dashboard.jsx  --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/{api,auth,news}.js, src/data/roster.js   (the only page hitting live readings: /api/health, /api/readings/history, /api/alerts/manual; also renders the news card)
+src/pages/Dashboard.jsx  --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/{api,auth,news,network,statusHistory}.js   (the only page hitting live readings: /api/health, /api/readings/history, /api/network, /api/status_history, /api/alerts/manual; also renders the news card. No longer depends on src/data/roster.js -- that fixture was dropped, device tabs now come from /api/health's real device list)
 src/pages/Account.jsx    --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/auth.js, src/data/roster.js   (gates on signedIn)
 
 server/index.js            (leaf, LOCAL DEV ONLY — Express fake API for `npm run dev`, not part of deployment)

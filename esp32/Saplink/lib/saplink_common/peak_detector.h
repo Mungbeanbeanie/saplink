@@ -38,6 +38,15 @@ class PeakDetector {
   // rebound has to be sustained too, because a single hum dip inside a
   // monotonic drift satisfies the 30% ratio instantly (measured on batches
   // 746-748, a one-way slide to -4.3mV that never recovered).
+  //
+  // ponytail: class-level, so BOTH plants share this bar and kMinAmplitudeMv
+  // below (as they share SignalConditioner's kSigmaFloorMv). Fine while the
+  // two electrodes sit in comparable soil with comparable sigma -- plant 1
+  // measured ~0.5mV. If plant 2 turns out to need a different bar it will
+  // either never fire or fire constantly, and there is no knob short of
+  // editing this header. Upgrade then: make these instance fields set from
+  // combo_main.cpp's Plant, chosen from measured sigma on BOTH channels,
+  // never from one.
   static constexpr int kSustainSamples = 15;
   // Absolute floor, in millivolts. 3sigma is self-referential -- it fires
   // whenever noise briefly exceeds its own running estimate, so on this rig it

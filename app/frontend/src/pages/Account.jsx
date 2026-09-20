@@ -2,7 +2,8 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
-import Copyright from '../components/Copyright.jsx';
+import Footer from '../components/Footer.jsx';
+import Mascot from '../components/Mascot.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { useHealth } from '../lib/useHealth.js';
@@ -19,6 +20,7 @@ export default function Account() {
 
   if (!signedIn) {
     return (
+      <>
       <div style={css('min-height: 100vh; background: var(--color-bg)')}>
         <Header />
         <main style={css('padding: clamp(20px, 3vw, 40px) clamp(20px, 5vw, 64px) 80px; display: flex; flex-direction: column; gap: 18px; max-width: 640px')}>
@@ -27,11 +29,15 @@ export default function Account() {
           <p style={css('margin: 0; color: var(--color-neutral-700)')}>Anyone can view the readings; signing in with Google lets you send a test signal and see every router on the network here.</p>
           <GoogleSignInButton size="large" shape="pill" />
         </main>
+        <Mascot />
       </div>
+      <Footer />
+      </>
     );
   }
 
   return (
+    <>
     <div style={css('min-height: 100vh; background: var(--color-bg)')}>
       <Header />
       <main style={css('padding: clamp(20px, 3vw, 40px) clamp(20px, 5vw, 64px) 80px; display: flex; flex-direction: column; gap: 26px; max-width: 1040px')}>
@@ -70,8 +76,10 @@ export default function Account() {
           <p style={css('margin: 0; font-size: 15px; color: var(--color-neutral-700)')}>No routers are reporting right now.</p>
         )}
 
-        <Copyright />
       </main>
+      <Mascot />
     </div>
+    <Footer />
+    </>
   );
 }

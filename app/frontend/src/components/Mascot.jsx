@@ -1,13 +1,19 @@
 import React, { useEffect, useRef } from 'react';
 
-// The Saplink mascot: a sprouting seed, fixed in the bottom-right corner.
+// The Saplink mascot: a sprouting seed, sitting bottom-right of each page.
 // Artwork inlined verbatim from media/saplink-mascot/saplink-mascot.svg (idle,
 // bar eyes) and saplink-mascot-smiling.svg (happy, arc eyes + smile) -- inline
 // rather than an <img> because the eye group needs a ref to follow the cursor.
-// Mounted once at the app root (see main.jsx) so it survives route changes.
-// Its eyes track the cursor everywhere on the page; it only smiles while the
-// cursor is actually hovering it (plain CSS :hover -- see index.css), and it
-// blinks on an irregular timer.
+// Rendered by every page, right after that page's <main> and before its
+// <Footer/> (see index.css's `position: sticky`, and each page's JSX) --
+// sticky keeps it pinned to the viewport corner while scrolling, but a sticky
+// element is physically bounded by its own parent's box, so once that parent
+// (the page, ending right where the footer begins) runs out of room, the
+// mascot can't render past it and so can never overlap the footer, shadow
+// included, at any scroll speed. That's a hard CSS guarantee, not a
+// scroll-listener guess. Its eyes track the cursor everywhere on the page; it
+// only smiles while the cursor is actually hovering it (plain CSS :hover --
+// see index.css), and it blinks on an irregular timer.
 export default function Mascot() {
   const svgRef = useRef(null);
   const faceRef = useRef(null);
@@ -55,7 +61,12 @@ export default function Mascot() {
       requestAnimationFrame(() => { queued = false; look(lastX, lastY); });
     };
 
+    // Sticky positioning (see index.css) keeps the mascot's screen position
+    // constant while it's "stuck" to the corner, but it moves with the page
+    // during the release phase near the footer -- re-measure on scroll too,
+    // not just resize, so the eyes don't aim at a stale spot through that.
     window.addEventListener('resize', updateAnchor);
+    window.addEventListener('scroll', updateAnchor, { passive: true });
     document.addEventListener('mousemove', onMouseMove);
     updateAnchor();
 
@@ -74,6 +85,7 @@ export default function Mascot() {
 
     return () => {
       window.removeEventListener('resize', updateAnchor);
+      window.removeEventListener('scroll', updateAnchor);
       document.removeEventListener('mousemove', onMouseMove);
       if (blinkTimer) clearTimeout(blinkTimer);
       if (openTimer) clearTimeout(openTimer);

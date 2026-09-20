@@ -71,7 +71,8 @@ db.execute(
 # These arrived after the first deployments, and CREATE TABLE IF NOT EXISTS
 # will not add a column to a table that already exists -- so an existing
 # saplink.db needs these or every insert fails on an unknown column.
-for _col in ("soil_mv INTEGER", "replay INTEGER", "raw_mv TEXT"):
+for _col in ("soil_mv INTEGER", "replay INTEGER", "raw_mv TEXT",
+             "node_id INTEGER"):
     try:
         db.execute(f"ALTER TABLE batch ADD COLUMN {_col}")
     except sqlite3.OperationalError:
@@ -86,6 +87,17 @@ class Batch(BaseModel):
     """The frozen wire format. Changing this breaks the firmware -- don't."""
 
     device: str = Field(max_length=32)
+    # Which ELECTRODE PAIR produced this waveform -- 1 = ADS1115 A2-A3, 2 =
+    # A0-A1. The same ORIGIN space AlertIn.node_id uses, so a batch and the
+    # alert it triggered name the same thing.
+    #
+    # This, not `device`, is what /api/network counts as a node. `device` is a
+    # free-text label a curl one-liner can invent; a node_id means a pair of
+    # electrodes is physically in a plant. The soil probe that rides along on
+    # the same batch is more data ABOUT this node, never a node of its own.
+    # Optional so batches predating the column, and hand-rolled test posts,
+    # still ingest -- they just are not nodes.
+    node_id: Optional[int] = Field(default=None, ge=0, le=255)
     seq: int = Field(ge=0)          # monotonic per boot; gaps mean dropped batches
     t_ms: int = Field(ge=0)         # millis() at the FIRST sample
     period_ms: int = Field(ge=1, le=60_000)
@@ -185,9 +197,21 @@ def _google_user(authorization: Optional[str]) -> str:
     return email
 
 
-def _rows(since_id: int, limit: int):
+def _rows(since_id: int, limit: int, device: Optional[str] = None):
+    # device=None means every device -- the unfiltered behaviour every caller
+    # relied on before one board started sensing two plants and posting under
+    # two device names. One SQL text with `:device IS NULL OR device=:device`
+    # rather than two query strings, so the ORDER BY/LIMIT that make the
+    # dashboard's since_id cursor work only exist in one place.
+    #
+    # The cursor stays correct under filtering: last_id becomes the max id
+    # among MATCHING rows, and the other device's interleaved rows are skipped
+    # by id>:since on the next poll rather than re-read. No gap, no duplicate.
     return db.execute(
-        f"SELECT {COLS} FROM batch WHERE id>? ORDER BY id LIMIT ?", (since_id, limit)
+        f"SELECT {COLS} FROM batch "
+        "WHERE id>:since AND (:device IS NULL OR device=:device) "
+        "ORDER BY id LIMIT :limit",
+        {"since": since_id, "device": device, "limit": limit},
     ).fetchall()
 
 
@@ -196,10 +220,10 @@ def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     _auth(authorization)
     cur = db.execute(
         "INSERT INTO batch(recv_ts,device,seq,t_ms,period_ms,baseline_mv,event,src,mv,"
-        "soil_mv,replay,raw_mv) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "soil_mv,replay,raw_mv,node_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (time.time(), b.device, b.seq, b.t_ms, b.period_ms, b.baseline_mv,
          b.event, b.src, json.dumps(b.mv), b.soil_mv, int(b.replay),
-         json.dumps(b.raw_mv) if b.raw_mv is not None else None),
+         json.dumps(b.raw_mv) if b.raw_mv is not None else None, b.node_id),
     )
     db.commit()
     return {"id": cur.lastrowid, "n": len(b.mv)}
@@ -224,19 +248,34 @@ def _flatten(row):
 
 
 @app.get("/api/readings/history")
-def history(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200):
-    """Flattened samples. `limit` counts BATCHES (~32 samples each), not samples."""
+def history(since_id: int = 0, limit: Annotated[int, Query(ge=1, le=2000)] = 200,
+            device: Optional[str] = None):
+    """Flattened samples. `limit` counts BATCHES (~32 samples each), not samples.
+
+    `device` filters to one plant's stream. Omitted means every device, which
+    is what this returned before there were two -- so the param is additive and
+    nothing built against the old shape changed.
+    """
     out, last = [], since_id
-    for row in _rows(since_id, limit):
+    for row in _rows(since_id, limit, device):
         last = row[0]
         out += _flatten(row)
     return {"last_id": last, "samples": out}
 
 
 @app.get("/api/readings/latest")
-def latest():
-    """Most recent single sample, for the dashboard's live panel + alert banner."""
-    row = db.execute(f"SELECT {COLS} FROM batch ORDER BY id DESC LIMIT 1").fetchone()
+def latest(device: Optional[str] = None):
+    """Most recent single sample, for the dashboard's live panel + alert banner.
+
+    Same optional `device` filter as /history: without it this is the newest
+    batch from ANY device, which with two plants on one board alternates
+    between them.
+    """
+    row = db.execute(
+        f"SELECT {COLS} FROM batch "
+        "WHERE (:device IS NULL OR device=:device) ORDER BY id DESC LIMIT 1",
+        {"device": device},
+    ).fetchone()
     if row is None:
         return {"last_id": 0, "sample": None}
     return {"last_id": row[0], "sample": _flatten(row)[-1]}
@@ -297,9 +336,21 @@ def pending_alert(authorization: Annotated[Optional[str], Header()] = None):
     treats any non-200 as "nothing pending", so an empty queue and a transport
     failure land on the same harmless branch.
 
-    ponytail: returns the oldest un-acked alert whatever raised it -- one board
-    is both ends of the route today, so the loopback IS the demo. A dedicated
-    plant-2 board wants a target filter here.
+    ponytail: returns the oldest un-acked alert whatever raised it. node_id now
+    distinguishes TWO origins on one board, and there is still deliberately no
+    target filter: _raise_alert()'s one-un-acked-at-a-time rule plus the
+    firmware's 30s kMinActuateGapMs already cap the pump at one dose per 30s
+    however many plants are firing, so a filter would add routing state and buy
+    no safety. One board is still both ends of the route, so the loopback IS
+    the demo.
+
+    Known cost, not a bug: a second plant's event raised INSIDE the un-acked
+    window of the first is dropped by that dedupe, not queued -- so it is
+    missing from /api/alerts entirely rather than merely delayed. The window is
+    one firmware cycle (~3.2s plus network), so collisions are rare. Upgrade
+    when it bites: make _raise_alert's dedupe per-node (`AND node_id=?`). That
+    is one clause, but it doubles the worst-case queue depth, so make the
+    change with the pump in front of you.
     """
     _auth(authorization)
     row = db.execute(
@@ -345,25 +396,62 @@ def network():
     dashboard's site map. Public, like /api/health -- a read path must never
     be gated. The map does NOT render one node per real device (see
     NETWORK_TARGET_DEVICES above and plan.md's Phase 6 note) -- this just
-    hands the frontend real numbers to size and light that graph with."""
-    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
+    hands the frontend real numbers to size and light that graph with.
+
+    One node per ELECTRODE PAIR, keyed on Batch.node_id, NOT per `device`.
+    Two plants on one ESP32 are two nodes because they are two pairs of
+    electrodes in two plants; the soil probe riding along on each batch is
+    more data about its node, not another node. A batch with no node_id --
+    a curl one-liner, anything predating the column -- is not a sensing node
+    and stays off the map, which is what stopped `curl` rendering as a
+    router."""
+    # One row per node: MAX(id) is the newest batch because id is the
+    # autoincrement PK. NULL node_ids are excluded by the inner WHERE, so
+    # they never form a group in the first place.
+    rows = db.execute(
+        "SELECT node_id, device, recv_ts, mv FROM batch WHERE id IN ("
+        "  SELECT MAX(id) FROM batch WHERE node_id IS NOT NULL GROUP BY node_id)"
+        " ORDER BY node_id"
+    ).fetchall()
     nodes = []
-    for d in devices:
-        row = db.execute(
-            "SELECT recv_ts, mv FROM batch WHERE device=? ORDER BY id DESC LIMIT 1",
-            (d,),
-        ).fetchone()
-        if row is None:
-            continue
-        recv_ts, mv_json = row
+    for node_id, device, recv_ts, mv_json in rows:
         # mv[] is already baseline-subtracted deviation (firmware's
         # cond.deviation()), so the largest magnitude in the latest batch is
         # directly "how far from resting, right now" -- no extra math needed.
         mv = json.loads(mv_json)
         activity = max((abs(v) for v in mv), default=0.0)
-        nodes.append({"device": d, "last_recv": recv_ts, "activity": round(activity, 3)})
-    density = min(1.0, len(devices) / NETWORK_TARGET_DEVICES)
+        nodes.append({"node_id": node_id, "device": device,
+                      "last_recv": recv_ts, "activity": round(activity, 3)})
+    density = min(1.0, len(nodes) / NETWORK_TARGET_DEVICES)
     return {"density": density, "nodes": nodes}
+
+
+@app.get("/api/status_history")
+def status_history(device: Optional[str] = None,
+                    hours: Annotated[int, Query(ge=1, le=336)] = 48):
+    """Hour-bucketed reporting history for the dashboard's "Status over time"
+    strip. Public, like /api/health/-network -- a read path must never be
+    gated. Every hour in the window gets an entry even with zero batches, so a
+    quiet/offline stretch is an explicit {batches:0,events:0}, not a hole in
+    the array the frontend would have to reconstruct itself."""
+    now = time.time()
+    start = now - hours * 3600
+    q = ("SELECT CAST(recv_ts/3600 AS INTEGER), COUNT(*), "
+         "SUM(CASE WHEN event='spike' THEN 1 ELSE 0 END) "
+         "FROM batch WHERE recv_ts >= ?")
+    params: list = [start]
+    if device:
+        q += " AND device=?"
+        params.append(device)
+    q += " GROUP BY 1"
+    by_bucket = {r[0]: (r[1], r[2]) for r in db.execute(q, params)}
+    start_bucket = int(start // 3600)
+    now_bucket = int(now // 3600)
+    hours_out = []
+    for bucket in range(start_bucket, now_bucket + 1):
+        batches, events = by_bucket.get(bucket, (0, 0))
+        hours_out.append({"hour_start": bucket * 3600, "batches": batches, "events": events})
+    return {"hours": hours_out}
 
 
 # ------------------------------------------------------------- Ecology news

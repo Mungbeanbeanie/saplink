@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
+import Footer from '../components/Footer.jsx';
+import Mascot from '../components/Mascot.jsx';
 import BranchScene from '../scene/BranchScene.jsx';
 import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
-import { useHealth } from '../lib/useHealth.js';
 import { useAuth, isConfigured, promptSignIn } from '../lib/auth.js';
 
 const STEPS = [
@@ -44,15 +45,11 @@ function DashboardCta() {
 }
 
 export default function Landing() {
-  const { health, error } = useHealth(15000);
   const [sent, setSent] = React.useState(false);
-
-  const online = !!(health && health.ok);
-  const ago = health && health.last_recv ? Math.max(0, Math.round((Date.now() - health.last_recv) / 1000)) : null;
 
   return (
     <>
-      <div style={css('position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0')}>
+      <div style={css('position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: -1')}>
         <BranchScene branchLayout="Overhead canopy" windStrength={1} motionSpeed={1} parallaxDepth={1} showDrips={false} />
       </div>
 
@@ -70,16 +67,6 @@ export default function Landing() {
             <div className="flex flex-wrap gap-3 items-center" style={css('padding-top: 6px')}>
               <DashboardCta />
             </div>
-            <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; padding: 12px 20px; border-radius: 999px; background: var(--color-neutral-100); border: 1px solid var(--color-neutral-300); box-shadow: var(--shadow-sm); font-size: 13px; color: var(--color-neutral-700)')}>
-              <span style={css('display: inline-flex; align-items: center; gap: 9px; font-weight: 600; color: var(--color-neutral-900)')}>
-                <span style={{ width: 9, height: 9, borderRadius: 999, background: online ? 'var(--color-accent-2-600)' : error ? 'var(--color-accent-600)' : 'var(--color-neutral-400)' }} />
-                {online ? 'System online' : error ? 'API unreachable' : 'Checking system…'}
-              </span>
-              <span>{health && health.devices ? health.devices.length + (health.devices.length === 1 ? ' device' : ' devices') : '— devices'}</span>
-              <span>{health && health.batches != null ? health.batches.toLocaleString() + ' batches' : '— batches'}</span>
-              <span style={css('color: var(--color-neutral-600)')}>{ago == null ? 'last reading unknown' : 'last reading ' + ago + 's ago'}</span>
-            </div>
-            <p style={css('margin: 10px 0 0; font-size: 13px; color: var(--color-neutral-600)')}>Live from the monitoring system, refreshed every fifteen seconds.</p>
           </div>
         </section>
 
@@ -139,17 +126,9 @@ export default function Landing() {
           </div>
         </section>
 
-        <footer style={css('background: var(--color-neutral-900); color: var(--color-neutral-300); padding: 40px clamp(20px, 5vw, 64px); display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: center')}>
-          <span style={css('font-family: var(--font-heading); font-size: 20px; color: var(--color-neutral-100)')}>Saplink</span>
-          <div className="flex flex-wrap" style={css('gap: 22px; font-size: 14px')}>
-            <a href="#top" style={css('color: var(--color-neutral-300)')}>Overview</a>
-            <Link to="/how-it-works" style={css('color: var(--color-neutral-300)')}>How it works</Link>
-            <Link to="/dashboard" style={css('color: var(--color-neutral-300)')}>Dashboard</Link>
-            <a href="#join" style={css('color: var(--color-neutral-300)')}>Contact</a>
-          </div>
-          <span style={css('font-size: 13px; color: var(--color-neutral-500)')}>Field trials, not a finished product. © Saplink 2026</span>
-        </footer>
+        <Mascot />
       </div>
+      <Footer />
     </>
   );
 }

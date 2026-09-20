@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header.jsx';
-import Copyright from '../components/Copyright.jsx';
+import Footer from '../components/Footer.jsx';
+import Mascot from '../components/Mascot.jsx';
 import { css } from '../lib/css.js';
 
 const PILLS = [
@@ -20,6 +21,7 @@ const CARDS = [
 
 export default function HowItWorks() {
   return (
+    <>
     <div style={css('min-height: 100vh; background: var(--color-bg)')}>
       <Header />
       <main style={css('padding: clamp(30px, 5vw, 70px) clamp(20px, 5vw, 64px) 90px; display: flex; flex-direction: column; gap: clamp(28px, 4vw, 48px)')}>
@@ -59,8 +61,10 @@ export default function HowItWorks() {
           <Link to="/" className="btn btn-secondary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>Back to overview</Link>
         </div>
 
-        <Copyright />
       </main>
+      <Mascot />
     </div>
+    <Footer />
+    </>
   );
 }

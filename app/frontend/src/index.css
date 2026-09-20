@@ -18,22 +18,57 @@ a:hover { color: var(--color-accent-800); }
 /* Intro loader: the growing-branch scene (src/components/IntroLoader.jsx). */
 .loader { position: fixed; inset: 0; z-index: 1000; background: #F1E5D6; overflow: hidden; transition: opacity .7s ease; }
 .loader.is-leaving { opacity: 0; pointer-events: none; }
-.loader-skip { position: absolute; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 html.is-loading, html.is-loading body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .loader { display: none; } }
 @keyframes sl-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.055); } }
 @keyframes sl-dots { 0% { opacity: .25; } 50% { opacity: 1; } 100% { opacity: .25; } }
 
-/* Mascot: the sprouting seed (src/components/Mascot.jsx), fixed bottom right.
-   Eyes track the cursor everywhere on the page, the face swaps to the smiling
-   variant only while the cursor is actually over the mascot (plain CSS
-   :hover -- the svg opts back into pointer events for this even though the
-   wrapper stays click-through), and it blinks on an irregular timer. The
-   bob/shadow/sprout keyframes are written against the artwork's own
-   coordinates. */
+/* Mascot: the sprouting seed (src/components/Mascot.jsx), rendered by every
+   page right after its <main> and before its <Footer/>. Eyes track the
+   cursor everywhere on the page, the face swaps to the smiling variant only
+   while the cursor is actually over the mascot (plain CSS :hover -- the svg
+   opts back into pointer events for this even though the wrapper stays
+   click-through), and it blinks on an irregular timer. The bob/shadow/sprout
+   keyframes are written against the artwork's own coordinates.
+
+   position: sticky, not fixed: it sticks to the corner while scrolling, but
+   -- unlike fixed -- is physically confined to its own parent's box (that
+   parent ends exactly where the footer begins), so it's a hard CSS guarantee
+   that it can never render over the footer, at any scroll speed, no
+   scroll-listener math needed. */
 .mascot {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: max(16px, env(safe-area-inset-bottom, 0px)); z-index: 45;
+  /* The page only scrolls vertically, so `bottom` is what actually makes this
+     sticky; the horizontal position is plain margins (not `right`, which on
+     a non-scrolling axis of a sticky element is easy to get subtly wrong) --
+     width:fit-content + margin-left:auto right-aligns it within its parent,
+     the same trick as centering with auto margins. */
+  /* NOTE (stale as of the height:0 change below): the margin-based
+     right-alignment described above was replaced with flex justify-content,
+     because fixing the footer-gap bug meant zeroing this box's own height,
+     which left width:fit-content with no box to size against. Left as-is
+     per this project's comment-preservation rule -- flagged to the user
+     rather than rewritten. */
+  position: sticky;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  /* Sticky elements keep occupying their normal-flow layout box even while
+     "stuck" -- with the svg's real height, that box reserved ~100px of
+     blank space after the page's last section (visible as a stray gap, with
+     the landing page's fixed canopy layer showing through it as a
+     gradient sliver, since that empty space had nothing else painted over
+     it). height:0 removes that reserved space; flex hangs the
+     (overflow-visible) svg upward from the zero-height line instead of
+     relying on the box's own height. Sticky's containment clamps against
+     this zero-height box's position, not the visual overflow, so it still
+     can't stick past its parent's edge -- the mascot still can't overlap
+     the footer, it just releases with no leftover space instead of
+     reserved space. */
+  height: 0;
+  overflow: visible;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  z-index: 45;
   pointer-events: none;
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
 }

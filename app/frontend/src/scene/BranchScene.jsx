@@ -2,7 +2,7 @@ import React from 'react';
 import { apiFetch } from '../lib/api.js';
 
 class BranchScene extends React.Component {
-  state = { sent: false, health: null, healthErr: false, signedIn: false };
+  state = { sent: false, health: null, healthErr: false, signedIn: false, mounted: false };
 
   readAuth() {
     try { return localStorage.getItem('saplink.signedIn') === '1'; } catch (e) { return false; }
@@ -149,20 +149,44 @@ class BranchScene extends React.Component {
   }
 
   componentDidMount() {
+    // The scroll listener only records where the page actually is; a
+    // separate rAF loop eases the rendered position toward that target each
+    // frame instead of snapping the transform straight to it inside the
+    // scroll event. Scroll events fire at whatever cadence the input device
+    // gives (bursty on a notchy wheel, front-loaded on momentum scroll), so
+    // writing the transform there directly reads as the branches jumping in
+    // steps; easing toward the target every animation frame is what makes
+    // the parallax read as one continuous, smooth motion regardless of how
+    // choppy the underlying scroll events are.
+    this.scrollTarget = window.scrollY || document.documentElement.scrollTop || 0;
+    this.scrollCurrent = this.scrollTarget;
     this.onScroll = () => {
-      const y = window.scrollY || document.documentElement.scrollTop || 0;
-      (this.refsList || []).forEach(([r, rate]) => {
-        if (r.current) r.current.style.transform = `translate3d(0, ${-y * rate}px, 0)`;
-      });
+      this.scrollTarget = window.scrollY || document.documentElement.scrollTop || 0;
     };
     window.addEventListener('scroll', this.onScroll, { passive: true });
-    this.onScroll();
+
+    const tick = () => {
+      const dy = this.scrollTarget - this.scrollCurrent;
+      this.scrollCurrent += Math.abs(dy) < 0.05 ? dy : dy * 0.12;
+      (this.refsList || []).forEach(([r, rate]) => {
+        if (r.current) r.current.style.transform = `translate3d(0, ${(-this.scrollCurrent * rate).toFixed(2)}px, 0)`;
+      });
+      this._raf = requestAnimationFrame(tick);
+    };
+    this._raf = requestAnimationFrame(tick);
     this.seedDrops();
 
+    // Fade the scene in once mounted rather than popping in at full opacity
+    // the instant the procedurally-built paths exist -- double rAF so the
+    // initial opacity:0 is actually painted a frame before the transition
+    // to 1 starts, or some browsers collapse the two into one paint and skip
+    // the transition entirely.
+    requestAnimationFrame(() => requestAnimationFrame(() => this.setState({ mounted: true })));
   }
   componentDidUpdate() { this.seedDrops(); }
   componentWillUnmount() {
     window.removeEventListener('scroll', this.onScroll);
+    if (this._raf) cancelAnimationFrame(this._raf);
   }
 
   pollHealth() {
@@ -270,7 +294,11 @@ class BranchScene extends React.Component {
       bendScale: 0.33, taperPow: 0.72, nodeEvery: 2, leafSweep: 0.5 }));
 
     // every branch's bark goes down first, then every leaf on top: no bark can cross a leaf
-    const scene = React.createElement(React.Fragment, null, [
+    const scene = React.createElement('div', {
+      // Wraps the whole scene in one element so mount can fade it in as a
+      // single fade (a bare Fragment has no box of its own to transition).
+      style: { position: 'absolute', inset: 0, opacity: this.state.mounted ? 1 : 0, transition: 'opacity 900ms ease' }
+    }, [
       this.layer(this._r1, 1, 0, sky),
       this.layer(this._r2b, 2, 2.5, far.bark, { opacity: 0.85 }),
       this.layer(this._r3b, 3, 1, [mid.bark, sideB.bark]),

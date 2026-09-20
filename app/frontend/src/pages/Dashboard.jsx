@@ -2,12 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
-import Copyright from '../components/Copyright.jsx';
+import Footer from '../components/Footer.jsx';
+import Mascot from '../components/Mascot.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
 import { useNews } from '../lib/news.js';
 import { useNetwork } from '../lib/network.js';
+import { useStatusHistory } from '../lib/statusHistory.js';
 
 // Site-map graph: every node is a real device from /api/network, laid out on
 // a fixed schematic grid -- there's no real per-router GPS/site-layout data
@@ -61,6 +63,9 @@ const fmtAgo = (ts) => {
   const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
   return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago';
 };
+const fmtHour = (epochSeconds) => new Date(epochSeconds * 1000).toLocaleString([], {
+  month: 'short', day: 'numeric', hour: 'numeric',
+});
 
 export default function Dashboard() {
   const { signedIn, token } = useAuth();
@@ -73,6 +78,7 @@ export default function Dashboard() {
   // anymore -- an id that turns out not to be real just won't show up in the
   // tab list once /api/health answers.
   const [device, setDevice] = useState(() => searchParams.get('device') || 'sense-1');
+  const statusHours = useStatusHistory(device);
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
@@ -189,7 +195,7 @@ export default function Dashboard() {
   const spikeActive = !!spike && !acked;
   const isSim = src !== 'ads1115';
   const online = !!(health && health.ok);
-  const ago = health && health.last_recv ? Math.max(0, Math.round((Date.now() - health.last_recv) / 1000)) + 's ago' : '—';
+  const ago = fmtAgo(health && health.last_recv);
   const gapBg = v.dropped ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)';
   const gapFg = v.dropped ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)';
 
@@ -230,12 +236,14 @@ export default function Dashboard() {
     );
   };
 
-  // No backend endpoint returns per-hour history (only current health and raw
-  // recent samples) -- "Status over time" below shows that honestly instead
-  // of fabricating 48 hours of blocks, same "not live yet" pattern already
-  // used for Response relay further down.
+  // "Status over time" below is real now (GET /api/status_history) -- one
+  // block per hour, colored client-side from each hour's {batches,events}.
+  // "Response relay" further down is still an honest "not live yet"
+  // placeholder -- that one's blocked on the backend's still-unbuilt
+  // pending-actuation mechanism (plan.md Phase 5), not a frontend gap.
 
   return (
+    <>
     <div style={css('min-height: 100vh; background: var(--color-bg)')}>
       <Header />
       <main style={css('padding: clamp(20px, 3vw, 40px) clamp(20px, 5vw, 64px) 80px; display: flex; flex-direction: column; gap: 22px')}>
@@ -344,9 +352,32 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Status over time</h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>An hour-by-hour view of the last two days, once the backend keeps that history — today it only reports current status.</p>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>An hour-by-hour view of the last two days for {device}. Each block is one hour.</p>
               </div>
-              <span className="tag tag-outline" style={css('border-radius: 999px')}>not live yet</span>
+              <div className="flex items-center gap-3" style={css('font-size: 12px; color: var(--color-neutral-700)')}>
+                <span className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--color-accent-2-600)', display: 'inline-block' }} />Reporting</span>
+                <span className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--color-accent-600)', display: 'inline-block' }} />Signal detected</span>
+                <span className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--color-neutral-400)', display: 'inline-block' }} />No data</span>
+              </div>
+            </div>
+            <div style={css('display: flex; gap: 2px; align-items: flex-end; overflow-x: auto')}>
+              {statusHours.map((h) => {
+                const state = h.batches === 0 ? 'offline' : h.events > 0 ? 'event' : 'reporting';
+                const bg = state === 'offline' ? 'var(--color-neutral-400)'
+                  : state === 'event' ? 'var(--color-accent-600)' : 'var(--color-accent-2-600)';
+                const label = fmtHour(h.hour_start) + ' — ' + h.batches + ' batch' + (h.batches === 1 ? '' : 'es')
+                  + (h.events ? ', ' + h.events + ' signal' + (h.events === 1 ? '' : 's') : '');
+                return (
+                  <span
+                    key={h.hour_start}
+                    title={label}
+                    style={{ flex: '1 0 5px', minWidth: 5, height: 40, borderRadius: 2, background: bg }}
+                  />
+                );
+              })}
+              {!statusHours.length && (
+                <p className="card-body" style={css('margin: 0; font-size: 14px; color: var(--color-neutral-600)')}>No history yet for this router.</p>
+              )}
             </div>
           </div>
 
@@ -524,8 +555,10 @@ export default function Dashboard() {
 
         </div>
 
-        <Copyright />
       </main>
+      <Mascot />
     </div>
+    <Footer />
+    </>
   );
 }
