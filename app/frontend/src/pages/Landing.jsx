@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
+import Footer from '../components/Footer.jsx';
+import Mascot from '../components/Mascot.jsx';
 import BranchScene from '../scene/BranchScene.jsx';
 import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
@@ -52,7 +54,7 @@ export default function Landing() {
 
   return (
     <>
-      <div style={css('position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0')}>
+      <div style={css('position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: -1')}>
         <BranchScene branchLayout="Overhead canopy" windStrength={1} motionSpeed={1} parallaxDepth={1} showDrips={false} />
       </div>
 
@@ -139,17 +141,9 @@ export default function Landing() {
           </div>
         </section>
 
-        <footer style={css('background: var(--color-neutral-900); color: var(--color-neutral-300); padding: 40px clamp(20px, 5vw, 64px); display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: center')}>
-          <span style={css('font-family: var(--font-heading); font-size: 20px; color: var(--color-neutral-100)')}>Saplink</span>
-          <div className="flex flex-wrap" style={css('gap: 22px; font-size: 14px')}>
-            <a href="#top" style={css('color: var(--color-neutral-300)')}>Overview</a>
-            <Link to="/how-it-works" style={css('color: var(--color-neutral-300)')}>How it works</Link>
-            <Link to="/dashboard" style={css('color: var(--color-neutral-300)')}>Dashboard</Link>
-            <a href="#join" style={css('color: var(--color-neutral-300)')}>Contact</a>
-          </div>
-          <span style={css('font-size: 13px; color: var(--color-neutral-500)')}>Field trials, not a finished product. © Saplink 2026</span>
-        </footer>
+        <Mascot />
       </div>
+      <Footer />
     </>
   );
 }

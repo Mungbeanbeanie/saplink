@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
-import Copyright from '../components/Copyright.jsx';
+import Footer from '../components/Footer.jsx';
+import Mascot from '../components/Mascot.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
@@ -236,6 +237,7 @@ export default function Dashboard() {
   // used for Response relay further down.
 
   return (
+    <>
     <div style={css('min-height: 100vh; background: var(--color-bg)')}>
       <Header />
       <main style={css('padding: clamp(20px, 3vw, 40px) clamp(20px, 5vw, 64px) 80px; display: flex; flex-direction: column; gap: 22px')}>
@@ -570,8 +572,10 @@ export default function Dashboard() {
 
         </div>
 
-        <Copyright />
       </main>
+      <Mascot />
     </div>
+    <Footer />
+    </>
   );
 }

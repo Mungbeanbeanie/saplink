@@ -18,22 +18,36 @@ a:hover { color: var(--color-accent-800); }
 /* Intro loader: the growing-branch scene (src/components/IntroLoader.jsx). */
 .loader { position: fixed; inset: 0; z-index: 1000; background: #F1E5D6; overflow: hidden; transition: opacity .7s ease; }
 .loader.is-leaving { opacity: 0; pointer-events: none; }
-.loader-skip { position: absolute; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 html.is-loading, html.is-loading body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .loader { display: none; } }
 @keyframes sl-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.055); } }
 @keyframes sl-dots { 0% { opacity: .25; } 50% { opacity: 1; } 100% { opacity: .25; } }
 
-/* Mascot: the sprouting seed (src/components/Mascot.jsx), fixed bottom right.
-   Eyes track the cursor everywhere on the page, the face swaps to the smiling
-   variant only while the cursor is actually over the mascot (plain CSS
-   :hover -- the svg opts back into pointer events for this even though the
-   wrapper stays click-through), and it blinks on an irregular timer. The
-   bob/shadow/sprout keyframes are written against the artwork's own
-   coordinates. */
+/* Mascot: the sprouting seed (src/components/Mascot.jsx), rendered by every
+   page right after its <main> and before its <Footer/>. Eyes track the
+   cursor everywhere on the page, the face swaps to the smiling variant only
+   while the cursor is actually over the mascot (plain CSS :hover -- the svg
+   opts back into pointer events for this even though the wrapper stays
+   click-through), and it blinks on an irregular timer. The bob/shadow/sprout
+   keyframes are written against the artwork's own coordinates.
+
+   position: sticky, not fixed: it sticks to the corner while scrolling, but
+   -- unlike fixed -- is physically confined to its own parent's box (that
+   parent ends exactly where the footer begins), so it's a hard CSS guarantee
+   that it can never render over the footer, at any scroll speed, no
+   scroll-listener math needed. */
 .mascot {
-  position: fixed; right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: max(16px, env(safe-area-inset-bottom, 0px)); z-index: 45;
+  /* The page only scrolls vertically, so `bottom` is what actually makes this
+     sticky; the horizontal position is plain margins (not `right`, which on
+     a non-scrolling axis of a sticky element is easy to get subtly wrong) --
+     width:fit-content + margin-left:auto right-aligns it within its parent,
+     the same trick as centering with auto margins. */
+  position: sticky;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  width: fit-content;
+  margin-left: auto;
+  margin-right: max(16px, env(safe-area-inset-right, 0px));
+  z-index: 45;
   pointer-events: none;
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
 }

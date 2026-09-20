@@ -211,21 +211,26 @@ const MAX = 9000; // absolute safety cap (ms) if growth math or rAF ever stalls
 
 // Whether to show the intro at all -- computed synchronously (not in an
 // effect) so it's already correct on the very first render, with no tick
-// where the real page is visible before the overlay appears. Every fresh
-// load/refresh replays it (no "seen this session" flag): this is meant to be
-// the first thing shown whenever the site opens, landing page included.
+// where the real page is visible before the overlay appears. Only on the
+// landing page: opening the site fresh lands there, and every reload of it
+// replays the intro too (no "seen this session" flag) -- but opening or
+// refreshing any other route directly (e.g. a bookmarked /dashboard) skips
+// straight to the page, no splash. IntroLoader is mounted outside
+// <BrowserRouter> (see main.jsx), so this reads the real browser URL rather
+// than useLocation().
 function shouldShowIntro() {
   if (typeof window === 'undefined') return false;
+  if (window.location.pathname !== '/') return false;
   return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
-// Plays the growing-branch scene on every full page load, then fades into
-// the site. Never plays for people who prefer reduced motion. Skip button
-// always works, and a stalled scene just opens the site (MAX timeout).
+// Plays the growing-branch scene on every full load/refresh of the landing
+// page, then fades into the site. Never plays for people who prefer reduced
+// motion, and never plays on any other route. No skip button -- it always
+// runs to completion (or the MAX timeout if it ever stalls).
 export default function IntroLoader() {
   const [show, setShow] = useState(shouldShowIntro);
   const [leaving, setLeaving] = useState(false);
-  const skipRef = useRef(null);
   const doneRef = useRef(false);
   const finishRef = useRef(() => {});
 
@@ -248,14 +253,8 @@ export default function IntroLoader() {
     };
     finishRef.current = finish;
 
-    const skip = skipRef.current;
-    if (skip) skip.addEventListener('click', finish);
     const maxTimer = setTimeout(finish, MAX);
-
-    return () => {
-      if (skip) skip.removeEventListener('click', finish);
-      clearTimeout(maxTimer);
-    };
+    return () => clearTimeout(maxTimer);
   }, [show]);
 
   if (!show) return null;
@@ -263,9 +262,6 @@ export default function IntroLoader() {
   return (
     <div className={'loader' + (leaving ? ' is-leaving' : '')} role="status" aria-label="Loading Saplink">
       <GrowthScene onGrown={() => finishRef.current()} />
-      <button ref={skipRef} type="button" className="btn btn-secondary btn-light loader-skip">
-        Skip
-      </button>
     </div>
   );
 }
