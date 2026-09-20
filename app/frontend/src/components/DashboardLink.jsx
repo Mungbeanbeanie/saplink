@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, isConfigured, promptSignIn } from '../lib/auth.js';
+import { notifyNeedsSignIn } from '../lib/mascotAlert.js';
 
 // A link to /dashboard that asks signed-out visitors to sign in with Google
 // first (same flow as Landing's old "Open the dashboard" button -- now built
@@ -21,6 +22,7 @@ export default function DashboardLink({ children, ...props }) {
     e.preventDefault();
     setWantsDashboard(true);
     promptSignIn();
+    notifyNeedsSignIn(e.currentTarget.getBoundingClientRect());
   };
 
   return (

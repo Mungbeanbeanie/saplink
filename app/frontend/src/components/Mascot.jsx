@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNews } from '../lib/news.js';
+import { onNeedsSignIn } from '../lib/mascotAlert.js';
 import mascotAlertSprite from '../assets/mascot-alert.png';
 
 // The Saplink mascot: a sprouting seed, sitting bottom-right of each page.
@@ -52,6 +53,7 @@ export default function Mascot() {
   // Unread-news badge: floats above the mascot's head until the first hover,
   // then never comes back for the rest of the session.
   const [alertSeen, setAlertSeen] = useState(false);
+  const signInTimerRef = useRef(null);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -169,12 +171,69 @@ export default function Mascot() {
   // only piece that becomes React state, since it only flips twice per drag.
   const MAX_DRAG_FOR_SURPRISE = 160; // px of drag distance at which surprise maxes out
   const MAX_MOUTH_R = 28; // comfortably inside the body ellipse (rx 141, ry 113) at the mouth's position -- never spills past the model
+  // Bounded "hop toward" a signed-out dashboard click (see the onNeedsSignIn
+  // effect below) -- a clamped magnitude, not a literal pixel-accurate
+  // relocation onto the clicked button, same convention as MAX_EYE_OFFSET/
+  // MAX_DRAG_FOR_SURPRISE above.
+  const MAX_ALERT_HOP_PX = 260;
   const drag = useRef({ raf: null, pointerId: null, startX: 0, startY: 0, startOffX: 0, startOffY: 0, offX: 0, offY: 0, surprise: 0 }).current;
 
   const applyDragVisuals = () => {
     if (stageRef.current) stageRef.current.style.transform = 'translate(' + drag.offX.toFixed(1) + 'px,' + drag.offY.toFixed(1) + 'px)';
     if (surpriseRef.current) surpriseRef.current.setAttribute('r', (drag.surprise * MAX_MOUTH_R).toFixed(1));
   };
+
+  // Eases the offset and the surprise amount back to 0 together -- exponential
+  // decay toward 0 each frame until close enough to just snap the rest of the
+  // way. Shared by a released manual drag and the sign-in-hop auto-dismiss
+  // below; removing 'is-hopping' is a harmless no-op when a drag (which never
+  // added it) is what's easing back.
+  const easeBackToRest = () => {
+    if (drag.raf) { cancelAnimationFrame(drag.raf); drag.raf = null; }
+    const tick = () => {
+      drag.offX *= 0.78; drag.offY *= 0.78; drag.surprise *= 0.78;
+      if (Math.abs(drag.offX) < 0.5 && Math.abs(drag.offY) < 0.5 && drag.surprise < 0.01) {
+        drag.offX = 0; drag.offY = 0; drag.surprise = 0;
+        applyDragVisuals();
+        if (stageRef.current) stageRef.current.classList.remove('is-hopping');
+        drag.raf = null;
+        return;
+      }
+      applyDragVisuals();
+      drag.raf = requestAnimationFrame(tick);
+    };
+    drag.raf = requestAnimationFrame(tick);
+  };
+
+  // Google One Tap's prompt() silently no-ops under common conditions (a
+  // prior dismissal's cooldown, blocked 3rd-party cookies) -- this is the
+  // visible fallback: DashboardLink's onClick (lib/mascotAlert.js) tells the
+  // mascot where a signed-out visitor just clicked, it hops there, says so,
+  // then hops back. Doesn't touch promptSignIn()/GIS itself.
+  useEffect(() => {
+    return onNeedsSignIn((rect) => {
+      if (drag.pointerId != null) return; // an active manual drag wins
+      const svgEl = svgRef.current;
+      if (!svgEl) return;
+      const r = svgEl.getBoundingClientRect();
+      const restX = r.left + r.width / 2, restY = r.top + r.height / 2;
+      const targetX = rect.left + rect.width / 2, targetY = rect.top + rect.height / 2;
+      let dx = targetX - restX, dy = targetY - restY;
+      const dist = Math.hypot(dx, dy) || 1;
+      const clamp = Math.min(dist, MAX_ALERT_HOP_PX);
+      dx = (dx / dist) * clamp; dy = (dy / dist) * clamp;
+      if (drag.raf) { cancelAnimationFrame(drag.raf); drag.raf = null; }
+      drag.offX = dx; drag.offY = dy;
+      if (stageRef.current) stageRef.current.classList.add('is-hopping');
+      applyDragVisuals();
+      setArticle({ title: "You'll need to sign in with Google to open the dashboard.", isFallback: true });
+      if (signInTimerRef.current) clearTimeout(signInTimerRef.current);
+      signInTimerRef.current = setTimeout(() => {
+        setArticle(null);
+        easeBackToRest();
+      }, 5000);
+    });
+  }, []);
 
   const handlePointerDown = (e) => {
     if (e.button != null && e.button !== 0) return;
@@ -202,21 +261,7 @@ export default function Mascot() {
     if (drag.pointerId == null) return;
     drag.pointerId = null;
     setDragging(false);
-    // Eases the offset and the surprise amount back to 0 together, once
-    // released -- exponential decay toward 0 each frame until close enough
-    // to just snap the rest of the way.
-    const tick = () => {
-      drag.offX *= 0.78; drag.offY *= 0.78; drag.surprise *= 0.78;
-      if (Math.abs(drag.offX) < 0.5 && Math.abs(drag.offY) < 0.5 && drag.surprise < 0.01) {
-        drag.offX = 0; drag.offY = 0; drag.surprise = 0;
-        applyDragVisuals();
-        drag.raf = null;
-        return;
-      }
-      applyDragVisuals();
-      drag.raf = requestAnimationFrame(tick);
-    };
-    drag.raf = requestAnimationFrame(tick);
+    easeBackToRest();
   };
 
   return (
@@ -289,7 +334,7 @@ export default function Mascot() {
           {/* Unread-news badge -- floats above the sprout until the first
               hover, see alertSeen/handleMouseEnter above. */}
           {!alertSeen && (
-            <image className="mascot-alert" href={mascotAlertSprite} x="419" y="130" width="22" height="40" />
+            <image className="mascot-alert" href={mascotAlertSprite} x="410" y="114" width="40" height="72" />
           )}
         </g>
         </svg>
