@@ -77,7 +77,7 @@ export default function Account() {
                 </div>
                 <div style={css('margin-left: auto; flex: none; display: flex; align-items: center; gap: 10px')}>
                   <span className="tag" style={{ borderRadius: 999, background: t.bg, color: t.fg }}>{t.label}</span>
-                  <Link to="/dashboard" className="btn btn-secondary" style={css('border-radius: 999px; padding: 9px 16px; font-size: 14px; white-space: nowrap')}>View</Link>
+                  <Link to={'/dashboard?device=' + encodeURIComponent(p.id)} className="btn btn-secondary" style={css('border-radius: 999px; padding: 9px 16px; font-size: 14px; white-space: nowrap')}>View</Link>
                 </div>
               </div>
             );
