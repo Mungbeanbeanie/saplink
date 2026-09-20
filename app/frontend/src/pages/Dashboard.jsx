@@ -160,7 +160,9 @@ export default function Dashboard() {
   const v = useMemo(() => {
     const s = samples;
     const mvs = s.map((x) => x.mv);
-    const lo = mvs.length ? Math.min(Math.min(...mvs), baseline) - 6 : 0;
+    // Never rises above 0 -- the 0 mV line should always be on the chart,
+    // not just implied, even though readings themselves stay well clear of it.
+    const lo = Math.min(0, mvs.length ? Math.min(Math.min(...mvs), baseline) - 6 : 0);
     const hi = mvs.length ? Math.max(Math.max(...mvs), baseline) + 6 : 100;
     const W = 900, H = 280;
     const X = (i) => (s.length < 2 ? 0 : (i / (s.length - 1)) * W);
@@ -178,8 +180,16 @@ export default function Dashboard() {
     const siteCanopy = roster.reduce((sum, n) => sum + n.canopy, 0) / roster.length;
     const completeness = seqs.length ? Math.max(0, 100 - (dropped / (seqs.length + dropped)) * 100) : 100;
 
+    // Horizontal gridlines every 10 mV, snapped to the current lo/hi range --
+    // recomputed here each time that range changes, so they track live data.
+    const GRID_STEP = 10;
+    const gridLines = [];
+    for (let val = Math.ceil(lo / GRID_STEP) * GRID_STEP; val <= hi; val += GRID_STEP) {
+      gridLines.push({ value: val, y: Y(val) });
+    }
+
     return {
-      s, lo, hi, H, W, linePath,
+      s, lo, hi, H, W, linePath, gridLines,
       areaPath: s.length ? linePath + 'L' + W + ' ' + H + 'L0 ' + H + 'Z' : '',
       spikePath: spikeSeg.join(' '),
       baselineY: Y(baseline).toFixed(1),
@@ -339,13 +349,21 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="flex gap-3.5" style={css('position: relative')}>
-              <div style={css('display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; color: var(--color-neutral-600); font-family: ui-monospace, monospace; padding: 2px 0; height: 280px')}>
-                <span>{v.hi.toFixed(0)} mV</span>
-                <span>{((v.hi + v.lo) / 2).toFixed(0)}</span>
-                <span>{v.lo.toFixed(0)}</span>
+              <div style={css('position: relative; width: 40px; flex: none; height: 280px; font-size: 12px; color: var(--color-neutral-600); font-family: ui-monospace, monospace; text-align: right')}>
+                {v.gridLines.map((g, i) => (
+                  <span
+                    key={g.value}
+                    style={{ position: 'absolute', right: 0, top: g.y, transform: 'translateY(-50%)', whiteSpace: 'nowrap', fontWeight: g.value === 0 ? 700 : 400, color: g.value === 0 ? 'var(--color-neutral-900)' : undefined }}
+                  >
+                    {g.value}{i === v.gridLines.length - 1 ? ' mV' : ''}
+                  </span>
+                ))}
               </div>
               <div style={css('flex: 1; min-width: 0; height: 280px; border-radius: var(--radius-lg); background: var(--color-neutral-200); overflow: hidden')}>
                 <svg viewBox="0 0 900 280" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
+                  {v.gridLines.map((g) => (
+                    <line key={g.value} x1="0" y1={g.y} x2="900" y2={g.y} stroke="#9a9081" strokeWidth={g.value === 0 ? 2 : 1} opacity={g.value === 0 ? 0.6 : 0.18} />
+                  ))}
                   <line x1="0" y1={v.baselineY} x2="900" y2={v.baselineY} stroke="#9a9081" strokeWidth="1.5" strokeDasharray="7 7" />
                   <path d={v.areaPath} fill="color-mix(in srgb, #7a8a5e 22%, transparent)" />
                   <path d={v.linePath} fill="none" stroke="#56633f" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
