@@ -229,6 +229,14 @@ export default function Dashboard() {
     setBaseline(cachedReadings ? cachedReadings.baseline : 42);
     setSrc(cachedReadings ? cachedReadings.src : 'sim');
     setLive(cachedReadings ? cachedReadings.live : false);
+    // The first real response is always a since_id=0 fetch -- the device's
+    // full recent history, which necessarily overlaps whatever the cache
+    // above just seeded. It must REPLACE the cache-seeded array, not concat
+    // onto it, or every reload duplicates the overlap (worst on a
+    // low-history device, since .slice(-180) has nothing older to push the
+    // duplicate out with). Every ingest after this one is a genuine
+    // incremental fetch and concats as before.
+    let firstIngest = true;
     // The wire shape is the real backend's (app/backend/main.py): { last_id,
     // samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src,
     // soil_mv, seq }] }. t_ms is the router's millis() clock, not a wall-clock
@@ -246,8 +254,16 @@ export default function Dashboard() {
       setBaseline(baseline);
       setSrc(src);
       if (last.event === 'spike') setSpike({ mv: last.mv, threshold: undefined, t: now });
+      const mapped = rows.map((r) => ({ t: now, mv: r.mv, event: r.event, seq: r.seq }));
+      // Captured as a const BEFORE setSamples, not read from the mutable
+      // `firstIngest` inside the updater -- the updater callback doesn't run
+      // synchronously here, so flipping `firstIngest` right after this call
+      // (rather than before) would make every updater invocation see it
+      // already false, and "replace" would never fire.
+      const replace = firstIngest;
+      firstIngest = false;
       setSamples((prev) => {
-        const next = prev.concat(rows.map((r) => ({ t: now, mv: r.mv, event: r.event, seq: r.seq }))).slice(-180);
+        const next = (replace ? mapped : prev.concat(mapped)).slice(-180);
         writeCache(readingsCacheKey, { samples: next, baseline, src, live: true });
         return next;
       });
