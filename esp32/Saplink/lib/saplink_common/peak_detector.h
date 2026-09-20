@@ -22,7 +22,7 @@ class PeakDetector {
   float lastThreshold() const { return last_threshold_mv_; }
 
  private:
-  enum class State { kIdle, kDeflecting, kRebounding };
+  enum class State { kIdle, kDeflecting, kRebounding, kTooLong };
 
   // A bare 3sigma-and-30%-rebound test fires on noise every few minutes by
   // construction, and that is exactly what hardware did: 11 alerts in 21
@@ -48,11 +48,39 @@ class PeakDetector {
   // combo_main.cpp's Plant, chosen from measured sigma on BOTH channels,
   // never from one.
   static constexpr int kSustainSamples = 15;
+  // Upper bound on the WHOLE excursion -- deflection plus rebound -- in
+  // samples. kSustainSamples says a real event must last; this says it must
+  // also END, and it is the only gate that separates the two demo stimuli.
+  //
+  // Measured on this rig, 3 leaf-rips vs 3 branch-fiddles on sense-1, replayed
+  // through this class: amplitude cannot separate them and ranks them
+  // BACKWARDS -- the worst fiddle peaked 55.8mV against rips of 23.3/39.8/
+  // 41.6mV. Duration does, because the two are different KINDS of thing. A
+  // tear is an impulse: tissue ruptures, the transient propagates, and the
+  // electrode is back under its bar inside ~2.5s (25-37 samples). Handling is
+  // a state: the electrode stays mechanically displaced and body-coupled for
+  // as long as a hand is on the plant, ~6-10s (62-96 samples). An excursion
+  // that outlasts this is a hand, not a wound, so kTooLong drops it.
+  //
+  // 50 sits mid-window: rips were still firing at 43, and the boot-time
+  // handling artifact (66.4mV, the one that doses on reset) got back in at 58.
+  // Samples, not seconds -- like kSustainSamples this counts check() calls and
+  // never looks at a clock, so an excursion straddling the ~3.6s inter-batch
+  // gap covers more wall time than the 5.0s that 50 samples suggests.
+  static constexpr int kMaxExcursionSamples = 50;
   // Absolute floor, in millivolts. 3sigma is self-referential -- it fires
   // whenever noise briefly exceeds its own running estimate, so on this rig it
   // was arming the pump on 0.447mV "events". Measured electrode sigma is
   // ~0.5mV. Calibration knob: lower it once the electrode noise floor drops.
-  static constexpr float kMinAmplitudeMv = 2.0f;
+  //
+  // Raised 2.0 -> 10.0 from the rip/fiddle capture. 2.0 was set against one
+  // quiet electrode; sense-2 then fired three times on 2.99-6.49mV wobbles,
+  // one of them while the OTHER plant was being handled, and dosed the plant
+  // nobody was touching. 10.0 clears every non-event deflection measured on
+  // either channel and still sits 2.3x under the smallest real rip (23.3mV).
+  // It does NOT reject the fiddles -- they are the largest events in the set;
+  // kMaxExcursionSamples does that.
+  static constexpr float kMinAmplitudeMv = 10.0f;
 
   State state_ = State::kIdle;
   float peak_mv_ = 0.0f;
@@ -60,6 +88,11 @@ class PeakDetector {
   // rebound has held past the 30% ratio. Both reset on every return to kIdle.
   int held_ = 0;
   int rebound_held_ = 0;
+  // Samples since the deflection was first latched, counted across BOTH
+  // phases. held_ cannot do this job: it stops advancing the moment the state
+  // machine leaves kDeflecting, so a long handling artifact that spends most
+  // of its life in kRebounding never accumulates one.
+  int since_onset_ = 0;
   // Captured when the deflection is latched, not when the rebound confirms --
   // sigma drifts between those two samples, so reporting the later value would
   // pair the peak with a bar it was never actually compared against.
@@ -77,5 +110,6 @@ class PeakDetector {
     peak_mv_ = 0.0f;
     held_ = 0;
     rebound_held_ = 0;
+    since_onset_ = 0;
   }
 };

@@ -221,6 +221,58 @@ void test_sub_millivolt_vp_shape_does_not_fire() {
   TEST_ASSERT_FALSE(fired);
 }
 
+// The two demo stimuli, as measured on the rig. Amplitude cannot tell them
+// apart and ranks them backwards -- the worst branch-fiddle peaked 55.8mV
+// against leaf-rips of 23.3/39.8/41.6mV -- so these two tests pin the only
+// thing that does separate them: how long the excursion lasts.
+//
+// A tear is an impulse. Tissue ruptures, the transient propagates, and the
+// electrode is back under its bar inside ~2.5s.
+void test_impulsive_rip_fires() {
+  SignalConditioner cond;
+  PeakDetector det;
+
+  for (int i = 0; i < 400; i++) cond.update(30.0f);
+
+  bool fired = false;
+  for (int i = 0; i < 120; i++) {
+    // 40mV, held 20 samples, then decayed away over 10 -- RIP1's shape.
+    float d = 0.0f;
+    if (i >= 10 && i < 30) d = -40.0f;
+    else if (i >= 30 && i < 40) d = -40.0f * (1.0f - (i - 30) / 10.0f);
+    cond.update(30.0f + d);
+    if (cond.warm() && det.check(cond.deviation(), cond.sigma())) fired = true;
+  }
+
+  TEST_ASSERT_TRUE(fired);
+}
+
+// Handling is a state, not an event: the electrode stays mechanically
+// displaced and body-coupled for as long as a hand is on the plant. This is
+// the rip above in every respect except that it outlasts kMaxExcursionSamples,
+// and that alone must stop it -- note it peaks HARDER than the rip does, so
+// nothing about amplitude can be what rejects it.
+void test_sustained_handling_artifact_does_not_fire() {
+  SignalConditioner cond;
+  PeakDetector det;
+
+  for (int i = 0; i < 400; i++) cond.update(30.0f);
+
+  bool fired = false;
+  for (int i = 0; i < 200; i++) {
+    // 55mV held for 100 samples (~10s of hand contact), then released. The
+    // wobble matters: without it the excursion never leaves kDeflecting, and
+    // this would pass even if only kDeflecting counted the excursion.
+    float d = 0.0f;
+    if (i >= 10 && i < 110) d = -55.0f + (i % 7);
+    else if (i >= 110 && i < 125) d = -55.0f * (1.0f - (i - 110) / 15.0f);
+    cond.update(30.0f + d);
+    if (cond.warm() && det.check(cond.deviation(), cond.sigma())) fired = true;
+  }
+
+  TEST_ASSERT_FALSE(fired);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_noise_only_does_not_fire);
@@ -232,5 +284,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_peak_reported_when_vp_straddles_batch_boundary);
   RUN_TEST(test_drift_with_hum_does_not_fire);
   RUN_TEST(test_sub_millivolt_vp_shape_does_not_fire);
+  RUN_TEST(test_impulsive_rip_fires);
+  RUN_TEST(test_sustained_handling_artifact_does_not_fire);
   return UNITY_END();
 }

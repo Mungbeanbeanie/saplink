@@ -15,11 +15,18 @@ bool PeakDetector::check(float conditioned_mv, float baseline_sigma) {
         threshold_mv_ = threshold;
         held_ = 1;
         rebound_held_ = 0;
+        since_onset_ = 1;
         state_ = State::kDeflecting;
       }
       break;
 
     case State::kDeflecting:
+      // Still up after a whole event's worth of samples: this is a hand on the
+      // plant, not a wound. Bail before the rebound can ever confirm it.
+      if (++since_onset_ > kMaxExcursionSamples) {
+        state_ = State::kTooLong;
+        break;
+      }
       // Fell back into the noise band before it ever held. That is a blip --
       // one aliased mains cycle, one ADC outlier -- not the onset of anything.
       // Compared against threshold_mv_, the bar latched with this deflection,
@@ -39,7 +46,22 @@ bool PeakDetector::check(float conditioned_mv, float baseline_sigma) {
       }
       break;
 
+    // Latched off until the signal actually releases. Not reset() -- that
+    // returns to kIdle, which would re-arm on the very next sample and let a
+    // 10s artifact fire on its own tail. The bar is threshold_mv_, the one
+    // this excursion was latched against, for the same reason kDeflecting
+    // uses it: a sigma that moved mid-excursion must not move the exit.
+    case State::kTooLong:
+      if (mag <= threshold_mv_) {
+        reset();
+      }
+      break;
+
     case State::kRebounding: {
+      if (++since_onset_ > kMaxExcursionSamples) {
+        state_ = State::kTooLong;
+        break;
+      }
       if (mag >= std::fabs(peak_mv_)) {
         // Still moving the same direction (or a new larger deflection) --
         // keep tracking the extremum rather than falsely calling it a rebound.
