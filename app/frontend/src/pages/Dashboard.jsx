@@ -94,6 +94,7 @@ export default function Dashboard() {
   const [hoverId, setHoverId] = useState(null);
   const [replayNote, setReplayNote] = useState('');
   const [exportNote, setExportNote] = useState('');
+  const [exportKind, setExportKind] = useState('csv');
   const [soilMv, setSoilMv] = useState(null);
   const lastId = useRef(0);
 
@@ -320,6 +321,11 @@ export default function Dashboard() {
                 <span className="tag" style={{ borderRadius: 999, background: isSim ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)', color: isSim ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)' }}>{isSim ? 'Simulated data — no plant connected' : 'Live plant — real sensor'}</span>
                 <span className="tag tag-neutral" style={css('border-radius: 999px')}>resting level {baseline.toFixed(1)} mV</span>
                 <span className="tag tag-neutral" style={css('border-radius: 999px')}>right now {v.current == null ? '—' : v.current.toFixed(1)} mV</span>
+                <select value={exportKind} onChange={(e) => setExportKind(e.target.value)} aria-label="Download format" style={css('border-radius: 999px; padding: 7px 12px; font-size: 13px; border: 1px solid var(--color-neutral-300); background: var(--color-neutral-100)')}>
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
+                <button type="button" onClick={() => download(exportKind)} disabled={!samples.length} className="btn btn-secondary" title="Downloads the readings on screen right now" style={css('border-radius: 999px; padding: 7px 16px; font-size: 13px')}>Download</button>
               </div>
             </div>
             <div className="flex gap-3.5" style={css('position: relative')}>
@@ -508,19 +514,6 @@ export default function Dashboard() {
             ) : (
               <p className="card-body" style={css('margin: 0; font-size: 14px; color: var(--color-neutral-600)')}>No routers reporting yet.</p>
             )}
-          </div>
-
-          <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px')}>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Download the data" /></h2>
-              <span className="tag tag-neutral" style={css('border-radius: 999px')}>{samples.length} readings</span>
-            </div>
-            <p className="card-body" style={css('margin: 0; font-size: 14px')}><FadeWords delayOffset={40} text="Take the readings currently loaded into a spreadsheet, or as raw JSON for analysis." /></p>
-            <div className="flex flex-wrap gap-2.5">
-              <button type="button" onClick={() => download('csv')} className="btn btn-primary" style={css('border-radius: 999px; padding: 12px 24px')}>CSV for spreadsheets</button>
-              <button type="button" onClick={() => download('json')} className="btn btn-secondary" style={css('border-radius: 999px; padding: 12px 24px')}>JSON</button>
-            </div>
-            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>{exportNote || 'Downloads the readings on screen right now.'}</p>
           </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
