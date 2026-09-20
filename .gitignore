@@ -19,4 +19,7 @@ secrets.h
 
 app/frontend/package-lock.json
 
-app/frontend/package.json
+# stray root-level npm artifact -- there is no root package.json; the only
+# npm project is app/frontend/
+/package-lock.json
+/node_modules
