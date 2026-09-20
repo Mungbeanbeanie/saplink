@@ -11,7 +11,14 @@
     <!-- Bitter + Karla: intro-loader-only typefaces (src/components/IntroLoader.jsx) -->
     <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@700&family=Karla:wght@400;500&display=swap" rel="stylesheet" />
     <!-- Google Identity Services for real sign-in (src/lib/auth.js) -->
-    <script src="https://accounts.google.com/gsi/client" async></script>
+    <!-- ponytail: deliberately NOT async. renderGoogleButton() has no retry and
+         useSyncExternalStore's snapshot is `email`, so a late-arriving GIS flips
+         auth.js's `ready` without notifying anyone -- an already-mounted button
+         then stays empty until a manual reload. A blocking classic script runs
+         before the deferred module entry, so window.google is always there.
+         Upgrade path if the ~100ms ever matters: restore async and make the
+         snapshot include readiness so the button re-renders. -->
+    <script src="https://accounts.google.com/gsi/client"></script>
   </head>
   <body>
     <div id="root"></div>
