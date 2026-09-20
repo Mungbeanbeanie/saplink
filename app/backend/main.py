@@ -366,6 +366,34 @@ def network():
     return {"density": density, "nodes": nodes}
 
 
+@app.get("/api/status_history")
+def status_history(device: Optional[str] = None,
+                    hours: Annotated[int, Query(ge=1, le=336)] = 48):
+    """Hour-bucketed reporting history for the dashboard's "Status over time"
+    strip. Public, like /api/health/-network -- a read path must never be
+    gated. Every hour in the window gets an entry even with zero batches, so a
+    quiet/offline stretch is an explicit {batches:0,events:0}, not a hole in
+    the array the frontend would have to reconstruct itself."""
+    now = time.time()
+    start = now - hours * 3600
+    q = ("SELECT CAST(recv_ts/3600 AS INTEGER), COUNT(*), "
+         "SUM(CASE WHEN event='spike' THEN 1 ELSE 0 END) "
+         "FROM batch WHERE recv_ts >= ?")
+    params: list = [start]
+    if device:
+        q += " AND device=?"
+        params.append(device)
+    q += " GROUP BY 1"
+    by_bucket = {r[0]: (r[1], r[2]) for r in db.execute(q, params)}
+    start_bucket = int(start // 3600)
+    now_bucket = int(now // 3600)
+    hours_out = []
+    for bucket in range(start_bucket, now_bucket + 1):
+        batches, events = by_bucket.get(bucket, (0, 0))
+        hours_out.append({"hour_start": bucket * 3600, "batches": batches, "events": events})
+    return {"hours": hours_out}
+
+
 # ------------------------------------------------------------- Ecology news
 
 NEWS_COLS = "id,source,title,link,summary,published_ts"
