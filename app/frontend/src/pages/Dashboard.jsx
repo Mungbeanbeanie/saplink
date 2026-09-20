@@ -257,19 +257,6 @@ export default function Dashboard() {
               <FadeWords delayOffset={220} text="Every plant on the network has its own router. Plants change their electrical activity as conditions change — more water, more light, a wound, a dry spell — and when that activity moves clear of the plant’s resting level the router puts it on the network, reaching this page within seconds." />
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span style={css('font-size: 13px; color: var(--color-neutral-600)')}>Router</span>
-            <div className="seg" style={css('border-radius: 999px')}>
-              {devices.map((id) => (
-                <button
-                  key={id}
-                  type="button" className="seg-opt"
-                  onClick={() => setDevice(id)}
-                  style={{ borderRadius: 999, padding: '8px 18px', fontSize: 14, background: id === device ? 'var(--color-accent-2-700)' : 'transparent', color: id === device ? 'var(--color-neutral-100)' : 'var(--color-neutral-800)' }}
-                >{id}</button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <div className="flex flex-wrap items-baseline gap-2.5" style={css('margin-top: -8px')}>

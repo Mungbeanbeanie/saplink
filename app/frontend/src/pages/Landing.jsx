@@ -94,8 +94,8 @@ export default function Landing() {
         <section id="mission" style={css('position: relative; background: var(--color-neutral-100); padding: clamp(50px, 8vw, 92px) clamp(20px, 5vw, 64px)')}>
           <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: clamp(24px, 4vw, 48px); align-items: center')}>
             <div style={css('min-width: 0; display: flex; flex-direction: column; gap: 16px; align-items: flex-start')}>
-              <span className="tag tag-accent-2" style={css('border-radius: 999px')}><FadeWords text="Our mission" /></span>
-              <h2 style={css('margin: 0; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08')}><FadeWords text="Keep a cleared stand talking while it grows back." delayOffset={70} /></h2>
+              <span className="tag tag-accent-2" style={css('border-radius: 999px')}>Our mission</span>
+              <h2 style={css('margin: 0; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08')}>Deforestation cuts the network. Saplink restores it.</h2>
               <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
                 <FadeWords delayOffset={200} text="Deforestation takes the largest species first. Those trees are the ones the rest of the stand depends on, and when they go the younger plants around them lose the signals that told them what was coming." />
               </p>
