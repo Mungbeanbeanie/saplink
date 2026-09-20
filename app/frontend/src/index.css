@@ -24,32 +24,32 @@ html.is-loading, html.is-loading body { overflow: hidden; }
 @keyframes sl-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.055); } }
 @keyframes sl-dots { 0% { opacity: .25; } 50% { opacity: 1; } 100% { opacity: .25; } }
 
-/* Mascot: a seed on stick limbs with a sprout on its head, fixed bottom
-   right. Eyes track the cursor, the free arm waves on an irregular timer. */
+/* Mascot: the sprouting seed (src/components/Mascot.jsx), fixed bottom right.
+   Eyes track the cursor, the face swaps to the smiling variant when the cursor
+   comes near, and it blinks on an irregular timer. The bob/shadow/sprout
+   keyframes are written against the artwork's own coordinates. */
 .mascot {
   position: fixed; right: max(16px, env(safe-area-inset-right, 0px));
   bottom: max(16px, env(safe-area-inset-bottom, 0px)); z-index: 45;
   pointer-events: none;
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
 }
-.mascot svg { display: block; transform-box: fill-box; transform-origin: 50% 100%; animation: mascotSway 5s ease-in-out infinite alternate; }
-.mascot-face { transform-box: fill-box; transform-origin: 50% 50%; transition: transform 0.12s ease-out; }
-.mascot-pupil { transform-box: fill-box; transform-origin: center; transition: transform 0.07s ease-out; }
-.mascot-arm-r { transform-box: view-box; transform-origin: 82px 60px; }
-.mascot-arm-r.is-waving { animation: mascotWave 1.15s ease-in-out; }
-@keyframes mascotSway { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
-@keyframes mascotWave {
-  0% { transform: rotate(0deg); }
-  20% { transform: rotate(-118deg); }
-  36% { transform: rotate(-96deg); }
-  52% { transform: rotate(-128deg); }
-  68% { transform: rotate(-100deg); }
-  84% { transform: rotate(-116deg); }
-  100% { transform: rotate(0deg); }
-}
+.mascot svg { display: block; overflow: visible; }
+.m-shadow { transform-origin: 360px 541px; animation: mascot-shadow 3.6s ease-in-out infinite; }
+.m-body-g { transform-box: view-box; transform-origin: 360px 530px; animation: mascot-bob 3.6s ease-in-out infinite; }
+.m-sprout { transform-box: view-box; transform-origin: 353px 290px; animation: mascot-sway 4.8s ease-in-out infinite; }
+.mascot-face { transform-box: view-box; transform-origin: 360px 380px; transition: transform 0.12s ease-out; }
+.mascot-eyes { transition: transform 0.07s ease-out; }
+.m-face-idle { transform-box: fill-box; transform-origin: 50% 50%; transition: transform 0.09s ease-out; }
+.m-face-idle.is-blinking { transform: scaleY(.1); }
+.m-face-happy { display: none; }
+.mascot.is-happy .m-face-idle { display: none; }
+.mascot.is-happy .m-face-happy { display: inline; }
+@keyframes mascot-bob { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-9px) scale(.99, 1.015); } }
+@keyframes mascot-shadow { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(.9); opacity: .7; } }
+@keyframes mascot-sway { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(3deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .mascot svg { animation: none; }
-  .mascot-face, .mascot-pupil { transition: none; }
-  .mascot-arm-r.is-waving { animation: none; }
+  .m-shadow, .m-body-g, .m-sprout { animation: none; }
+  .mascot-face, .mascot-eyes, .m-face-idle { transition: none; }
 }
 @media (max-width: 520px) { .mascot svg { width: 60px; height: 78px; } }
