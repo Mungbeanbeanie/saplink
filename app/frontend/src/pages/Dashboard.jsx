@@ -380,7 +380,7 @@ export default function Dashboard() {
             <div className="card-kicker" style={css('margin-bottom: 6px')}><FadeWords text="Live monitoring" /></div>
             <h1 style={css('margin: 0; font-size: clamp(30px, 4vw, 50px); line-height: 1.05')}><FadeWords text="The" delayOffset={70} /> <span style={css('color: #743f1e')}><FadeWords text="Root" delayOffset={98} /></span> <FadeWords text="Directory" delayOffset={126} /></h1>
             <p style={css('margin: 10px 0 0; max-width: 60ch; font-size: 15px; line-height: 1.6; color: var(--color-neutral-700)')}>
-              <FadeWords delayOffset={220} text="Every plant on the network has its own router. Plants change their electrical activity as conditions change — more water, more light, a wound, a dry spell — and when that activity moves clear of the plant’s resting level the router puts it on the network, reaching this page within seconds." />
+              <FadeWords delayOffset={220} text="Routers are spread through the site, each one reading the plants around it. Plants change their electrical activity as conditions change, and when that activity moves clear of the plant’s resting level the router puts it on the network, reaching this page within seconds." />
             </p>
           </div>
         </div>

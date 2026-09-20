@@ -9,9 +9,9 @@ import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
 
 const STEPS = [
-  ['01', 'One plant sends', 'Its router picks up a change in the plant’s electrical activity: water, light, a wound, anything it responds to.', 'sage'],
+  ['01', 'One plant sends', 'The router covering that plant picks up a change in its electrical activity: water, light, a wound, anything it responds to.', 'sage'],
   ['02', 'Saplink carries it', 'The signal is passed over Wi-Fi, checked against that plant’s resting level, and logged.', 'accent'],
-  ['03', 'The neighbour hears it', 'The neighbouring plant’s router delivers the signal, so it knows what is happening next door.', 'sage']
+  ['03', 'The neighbour hears it', 'The router covering its neighbours delivers the signal, so they know what is happening next door.', 'sage']
 ];
 
 const CTA_STYLE = css('border-radius: 999px; padding: 13px 26px; font-size: 16px');
@@ -45,7 +45,7 @@ export default function Landing() {
         <section id="who" style={css('position: relative; background: var(--color-accent-2-800); color: var(--color-neutral-100); padding: clamp(50px, 9vw, 96px) clamp(20px, 5vw, 64px)')}>
           <h2 style={css('margin: 0 0 10px; font-size: clamp(30px, 3.6vw, 46px); color: var(--color-neutral-100)')}><FadeWords text="How two plants connect" /></h2>
           <p style={css('margin: 0 0 36px; max-width: 52ch; color: var(--color-accent-2-200)')}>
-            <FadeWords delayOffset={100} text="Each plant gets its own router. Whatever one reports, more water or more light or a wound, reaches the next plant in about a second." />
+            <FadeWords delayOffset={100} text="Routers are spread across a site, each one reading the plants around it and relaying what it finds to the next. The diagram below simplifies that to two plants, and what one reports reaches the other in about a second." />
           </p>
           <div
             style={css('border-radius: var(--radius-lg); background: color-mix(in srgb, #f9f4ed 8%, transparent); border: 1px solid color-mix(in srgb, #f9f4ed 20%, transparent); padding: clamp(14px, 2vw, 26px)')}
@@ -71,7 +71,7 @@ export default function Landing() {
                 <FadeWords delayOffset={200} text="Deforestation takes the largest trees first, and the rest of the stand depends on them. Across 176 restoration sites in tropical Asia, 44 percent of planted saplings died within five years, while those planted near standing mature trees survived at roughly 20 percent higher rates." />
               </p>
               <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
-                <FadeWords delayOffset={340} text="Saplink puts a router on the plants that remain, so what one of them senses still reaches its neighbours. We are building it for cleared ground that has been replanted and left to recover." />
+                <FadeWords delayOffset={340} text="Saplink spreads routers through the plants that remain, so what one of them senses still reaches its neighbours. We are building it for cleared ground that has been replanted and left to recover." />
               </p>
               <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600); max-width: 52ch; line-height: 1.5')}>
                 Source: Banin et al. (2022), <a href="https://doi.org/10.1098/rstb.2021.0090" target="_blank" rel="noreferrer" style={css('color: inherit')}>The road to recovery: a synthesis of outcomes from ecosystem restoration in tropical and sub-tropical Asian forests</a>, Philosophical Transactions of the Royal Society B.
@@ -86,7 +86,7 @@ export default function Landing() {
 
         <section id="join" style={css('position: relative; background: var(--color-bg); padding: clamp(56px, 10vw, 110px) clamp(20px, 5vw, 64px)')}>
           <div style={css('max-width: 620px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start')}>
-            <h2 style={css('margin: 0; font-size: clamp(32px, 4.4vw, 56px); line-height: 1.05')}><FadeWords text="Put a router on your first plant." /></h2>
+            <h2 style={css('margin: 0; font-size: clamp(32px, 4.4vw, 56px); line-height: 1.05')}><FadeWords text="Put the first router on your site." /></h2>
             <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 46ch')}><FadeWords delayOffset={140} text="A live network belongs to the team running it, so what you can open here is a public demo. Sign in with Google if you want to run Saplink on your own site." /></p>
             <div className="flex flex-wrap gap-3 items-center">
               <DashboardLink className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</DashboardLink>

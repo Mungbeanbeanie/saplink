@@ -31,7 +31,7 @@ export default function HowItWorks() {
           <div className="card-kicker" style={css('margin-bottom: 8px')}><FadeWords text="How it works" /></div>
           <h1 style={css('margin: 0; font-size: clamp(34px, 5vw, 60px); line-height: 1.04')}><FadeWords text="One router per plant" delayOffset={70} /></h1>
           <p style={css('margin: 14px 0 0; max-width: 60ch; font-size: clamp(16px, 1.4vw, 19px); line-height: 1.6; color: var(--color-neutral-700); text-wrap: pretty')}>
-            <FadeWords delayOffset={200} text="Think of it as home Wi-Fi for a hedgerow. Each plant gets a router: it reads the plant’s electrical activity, joins the network, passes whatever that plant reports to the other routers, and keeps a record you can read at a glance." />
+            <FadeWords delayOffset={200} text="Think of it as home Wi-Fi for a hedgerow. Routers are spread across the site: each one reads the electrical activity of the plants around it, joins the network, passes whatever they report to the other routers, and keeps a record you can read at a glance." />
           </p>
         </div>
 
