@@ -493,8 +493,8 @@ export default function Dashboard() {
           <div className="card elev-md" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 18px')}>
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="The site" /></h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}><FadeWords delayOffset={40} text="A schematic diagram of every real router on the network and how active each one is right now — positions here are just layout, not GPS/site placement (no location data exists for them yet). The blue glow shows how wet the soil is for the selected router." /></p>
+                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="The Site" /></h2>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}><FadeWords delayOffset={40} text="A schematic diagram of every real router on the network and how active each one is right now. Positions are not GPS/site placement but generalized locations compared to other routers. The blue glow shows how wet the soil is for the region." /></p>
               </div>
               <span className="tag tag-outline" style={css('border-radius: 999px')}>Soil moisture: {soilMv != null ? soilMv.toFixed(0) + ' mV (raw)' : '—'}</span>
             </div>
