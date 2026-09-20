@@ -36,11 +36,15 @@ static const uint32_t kPumpRunMs = 1500;
 // halfway through a demo.
 static const uint32_t kMinActuateGapMs = 30000;
 
-// Liveness ping while nothing is happening. Ingestion is event-driven, so a
-// healthy board is silent -- and /api/health's last_recv, which the dashboard's
-// connection panel reads, would go stale and report it as offline. Set to 0 for
-// true silence and accept that panel going red.
-static const uint32_t kHeartbeatMs = 60000;
+// The polled floor under ingestion: one batch goes up per interval whatever the
+// plant is doing, so the dashboard always has a baseline trace (and
+// /api/health's last_recv, which its connection panel reads, stays fresh).
+// Event windows ride ON TOP of this at full resolution -- see loop(). Batches
+// are still sampled continuously at ~3.2s each; this only decides how many are
+// uploaded, so at 10000 roughly every third one is. Calibration knob: raise it
+// if uploads cost too much, 0 reverts to event-only and leaves the chart empty
+// between events.
+static const uint32_t kPollMs = 10000;
 
 static Adafruit_ADS1115 ads;
 static bool ads_ok = false;
@@ -352,12 +356,13 @@ void loop() {
                 (unsigned long)soil_mv, spike ? "SPIKE" : "",
                 replayed ? " [replay]" : "");
 
-  // Ingestion is event-driven: a quiet plant uploads nothing. What gets sent is
-  // the window AROUND an event -- the batch before it (the onset, already past
-  // by the time the detector confirms a rebound), the batch it fired in, and
-  // the one after (the tail). ~9.6s of waveform per event, silence either side.
-  const bool heartbeat =
-      kHeartbeatMs && (millis() - last_upload_ms >= kHeartbeatMs);
+  // Ingestion is polled at kPollMs, event-driven on top. Polling keeps a
+  // baseline trace flowing while the plant is quiet; an event still sends the
+  // whole window AROUND it -- the batch before (the onset, already past by the
+  // time the detector confirms a rebound), the batch it fired in, and the one
+  // after (the tail) -- so an event is ~9.6s of CONTIGUOUS waveform at the full
+  // sample rate, where a polled stretch is one batch per interval.
+  const bool poll_due = kPollMs && (millis() - last_upload_ms >= kPollMs);
   bool sent_this_batch = false;
 
   if (wifiUp()) {
@@ -392,7 +397,7 @@ void loop() {
       post(t_ms, cond.baseline(), false, soil_mv, buf, raw_buf, replayed);
       sent_this_batch = true;
       send_tail = false;
-    } else if (heartbeat) {
+    } else if (poll_due) {
       post(t_ms, cond.baseline(), false, soil_mv, buf, raw_buf, replayed);
       sent_this_batch = true;
     }
