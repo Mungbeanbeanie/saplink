@@ -219,7 +219,6 @@ export default function Dashboard() {
   // answers, so the tab bar is never empty.
   const devices = health && health.devices && health.devices.length ? health.devices : [device];
   const connected = health && health.devices ? health.devices.length : 0;
-  const deviceReporting = !!(health && health.devices && health.devices.includes(device));
   const spikeActive = !!spike && !acked;
   const isSim = src !== 'ads1115';
   const online = !!(health && health.ok);
@@ -279,16 +278,11 @@ export default function Dashboard() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="card-kicker" style={css('margin-bottom: 6px')}><FadeWords text="Live monitoring" /></div>
-            <h1 style={css('margin: 0; font-size: clamp(30px, 4vw, 50px); line-height: 1.05')}><FadeWords text="What the plant is signalling" delayOffset={70} /></h1>
+            <h1 style={css('margin: 0; font-size: clamp(30px, 4vw, 50px); line-height: 1.05')}><FadeWords text="The Root Directory" delayOffset={70} /></h1>
             <p style={css('margin: 10px 0 0; max-width: 60ch; font-size: 15px; line-height: 1.6; color: var(--color-neutral-700)')}>
               <FadeWords delayOffset={220} text="Every plant on the network has its own router. Plants change their electrical activity as conditions change — more water, more light, a wound, a dry spell — and when that activity moves clear of the plant’s resting level the router puts it on the network, reaching this page within seconds." />
             </p>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-baseline gap-2.5" style={css('margin-top: -8px')}>
-          <span style={css('font-family: var(--font-heading); font-size: 20px')}>{device}</span>
-          <span style={css('font-size: 14px; color: var(--color-neutral-700)')}>{deviceReporting ? 'Reporting' : 'No recent data'}</span>
         </div>
 
         <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px')}>
