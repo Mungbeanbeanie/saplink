@@ -9,7 +9,7 @@ import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
 
 const STEPS = [
-  ['01', 'One plant sends', 'Its router picks up a change in the plant’s electrical activity — water, light, a wound, anything it responds to.', 'sage'],
+  ['01', 'One plant sends', 'Its router picks up a change in the plant’s electrical activity: water, light, a wound, anything it responds to.', 'sage'],
   ['02', 'Saplink carries it', 'The signal is passed over Wi-Fi, checked against that plant’s resting level, and logged.', 'accent'],
   ['03', 'The neighbour hears it', 'The neighbouring plant’s router delivers the signal, so it knows what is happening next door.', 'sage']
 ];
@@ -34,7 +34,7 @@ export default function Landing() {
             <span className="tag tag-accent-2" style={css('border-radius: 999px')}><FadeWords text="A Wi-Fi router for plants" /></span>
             <h1 style={css('margin: 0; font-size: clamp(42px, 6.4vw, 84px); line-height: 1.02; text-wrap: balance')}><FadeWords text="Saplink" delayOffset={80} /></h1>
             <p style={css('margin: 0; font-size: clamp(17px, 1.5vw, 20px); line-height: 1.6; color: var(--color-neutral-800); max-width: 56ch; text-wrap: pretty')}>
-              <FadeWords delayOffset={180} text="Saplink is a router for plants. One clips onto a living stem, picks up the electrical signals the plant sends as its conditions change — more water, more light, a wound, a dry spell — and puts them on the network, so nearby plants and you both get the message within seconds." />
+              <FadeWords delayOffset={180} text="In an old forest the largest trees are the router. They sense what is happening around them and pass water, nutrients, and warnings through the soil to the seedlings nearby. Logging takes those trees first, and the signal stops. Saplink rebuilds that router in hardware: it clips onto a living stem, reads the electrical signals a plant sends as its conditions change, and puts them back on the network within seconds." />
             </p>
             <div className="flex flex-wrap gap-3 items-center" style={css('padding-top: 6px')}>
               <DashboardLink className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</DashboardLink>
@@ -45,7 +45,7 @@ export default function Landing() {
         <section id="who" style={css('position: relative; background: var(--color-accent-2-800); color: var(--color-neutral-100); padding: clamp(50px, 9vw, 96px) clamp(20px, 5vw, 64px)')}>
           <h2 style={css('margin: 0 0 10px; font-size: clamp(30px, 3.6vw, 46px); color: var(--color-neutral-100)')}><FadeWords text="How two plants connect" /></h2>
           <p style={css('margin: 0 0 36px; max-width: 52ch; color: var(--color-accent-2-200)')}>
-            <FadeWords delayOffset={100} text="Each plant gets its own router. Whatever one plant reports — more water, more light, a wound — is carried across the network and delivered to the next plant in about a second." />
+            <FadeWords delayOffset={100} text="Each plant gets its own router. Whatever one plant reports, whether that is more water, more light, or a wound, is carried across the network and delivered to the next plant in about a second." />
           </p>
           <div
             style={css('border-radius: var(--radius-lg); background: color-mix(in srgb, #f9f4ed 8%, transparent); border: 1px solid color-mix(in srgb, #f9f4ed 20%, transparent); padding: clamp(14px, 2vw, 26px)')}
@@ -68,10 +68,16 @@ export default function Landing() {
               <span className="tag tag-accent-2" style={css('border-radius: 999px')}>Our mission</span>
               <h2 style={css('margin: 0; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08')}>Deforestation cuts the network. Saplink restores it.</h2>
               <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
-                <FadeWords delayOffset={200} text="Deforestation takes the largest species first. Those trees are the ones the rest of the stand depends on, and when they go the younger plants around them lose the signals that told them what was coming." />
+                <FadeWords delayOffset={200} text="Deforestation takes the largest trees first, and they are the ones the rest of the stand depends on. It shows in what comes after. Across 176 restoration sites in tropical and subtropical Asia, 18 percent of planted saplings were dead within a year and 44 percent within five." />
               </p>
               <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
-                <FadeWords delayOffset={340} text="Saplink puts a router on the plants that remain, so what one of them senses still reaches its neighbours. We are building it for the ground in between: land that has been cleared, replanted, and left to recover." />
+                <FadeWords delayOffset={340} text="The same study found that saplings planted where mature trees were still standing survived at roughly 20 percent higher rates. Standing next to a grown tree is worth about a fifth of a sapling’s odds, and a cleared site has none left to stand next to." />
+              </p>
+              <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
+                <FadeWords delayOffset={480} text="Saplink puts a router on the plants that remain, so what one of them senses still reaches its neighbours. We are building it for the ground in between: land that has been cleared, replanted, and left to recover." />
+              </p>
+              <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600); max-width: 52ch; line-height: 1.5')}>
+                Source: Banin et al. (2022), <a href="https://doi.org/10.1098/rstb.2021.0090" target="_blank" rel="noreferrer" style={css('color: inherit')}>The road to recovery: a synthesis of outcomes from ecosystem restoration in tropical and sub-tropical Asian forests</a>, Philosophical Transactions of the Royal Society B.
               </p>
             </div>
             <div
@@ -84,7 +90,7 @@ export default function Landing() {
         <section id="join" style={css('position: relative; background: var(--color-bg); padding: clamp(56px, 10vw, 110px) clamp(20px, 5vw, 64px)')}>
           <div style={css('max-width: 620px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start')}>
             <h2 style={css('margin: 0; font-size: clamp(32px, 4.4vw, 56px); line-height: 1.05')}><FadeWords text="Put a router on your first plant." /></h2>
-            <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 46ch')}><FadeWords delayOffset={140} text="The readings are open to everyone. Sign in with Google to acknowledge signals and send a test signal across the plant network." /></p>
+            <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 46ch')}><FadeWords delayOffset={140} text="A live network belongs to the team running it. The conservation group or research station working a site sees its own routers, and nobody else does. What you can open here is a demo network, left public so you can watch one work. Sign in with Google if you want to run Saplink on your own site." /></p>
             <div className="flex flex-wrap gap-3 items-center">
               <DashboardLink className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</DashboardLink>
             </div>
@@ -93,7 +99,7 @@ export default function Landing() {
               <button type="submit" className="btn btn-primary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>Request a router</button>
             </form>
             <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>
-              {sent ? 'Thanks — we will be in touch about a router.' : 'No spam. One note when routers ship in your area.'}
+              {sent ? 'Thanks, we will be in touch about a router.' : 'No spam. One note when routers ship in your area.'}
             </p>
           </div>
         </section>

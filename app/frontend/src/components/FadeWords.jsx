@@ -16,12 +16,19 @@ const MAX_DELAY_MS = 520;
 export default function FadeWords({ text, delayOffset = 0 }) {
   const tokens = String(text).split(/(\s+)/); // keep whitespace tokens so wrapping/spacing stays natural
   let wordIndex = 0;
-  return tokens.map((chunk, i) => {
-    if (!chunk.trim()) return chunk;
-    const delay = delayOffset + Math.min(wordIndex * STEP_MS, MAX_DELAY_MS);
-    wordIndex++;
-    return (
-      <span key={i} className="fade-up fade-word" style={{ animationDelay: delay + 'ms' }}>{chunk}</span>
-    );
-  });
+  // Wrapped in one plain inline <span> so the whitespace tokens survive a flex
+  // parent -- a flex container drops whitespace-only text nodes, which ran the
+  // words together inside `.tag` (inline-flex) and the HowItWorks pills.
+  return (
+    <span>
+      {tokens.map((chunk, i) => {
+        if (!chunk.trim()) return chunk;
+        const delay = delayOffset + Math.min(wordIndex * STEP_MS, MAX_DELAY_MS);
+        wordIndex++;
+        return (
+          <span key={i} className="fade-up fade-word" style={{ animationDelay: delay + 'ms' }}>{chunk}</span>
+        );
+      })}
+    </span>
+  );
 }
