@@ -1,12 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header.jsx';
-import GoogleMark from '../components/GoogleMark.jsx';
+import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import BranchScene from '../scene/BranchScene.jsx';
 import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
 import { useHealth } from '../lib/useHealth.js';
-import { useAuth } from '../lib/auth.js';
 
 const STEPS = [
   ['01', 'One plant sends', 'Its router picks up a change in the plant’s electrical activity — water, light, a wound, anything it responds to.', 'sage'],
@@ -16,7 +15,6 @@ const STEPS = [
 
 export default function Landing() {
   const { health, error } = useHealth(15000);
-  const { signIn } = useAuth();
   const [sent, setSent] = React.useState(false);
 
   const online = !!(health && health.ok);
@@ -39,11 +37,9 @@ export default function Landing() {
             <p style={css('margin: 0; font-size: clamp(17px, 1.5vw, 20px); line-height: 1.6; color: var(--color-neutral-800); max-width: 56ch; text-wrap: pretty')}>
               Saplink is a router for plants. One clips onto a living stem, picks up the electrical signals the plant sends as its conditions change — more water, more light, a wound, a dry spell — and puts them on the network, so nearby plants and you both get the message within seconds.
             </p>
-            <div className="flex flex-wrap gap-3" style={css('padding-top: 6px')}>
+            <div className="flex flex-wrap gap-3 items-center" style={css('padding-top: 6px')}>
               <Link to="/dashboard" className="btn btn-primary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>Open the dashboard</Link>
-              <Link to="/account" onClick={signIn} className="btn btn-secondary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px; gap: 11px; background: var(--color-neutral-100); border-color: var(--color-neutral-300)')}>
-                <GoogleMark size={19} />Sign in
-              </Link>
+              <GoogleSignInButton size="large" shape="pill" />
             </div>
             <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; padding: 12px 20px; border-radius: 999px; background: var(--color-neutral-100); border: 1px solid var(--color-neutral-300); box-shadow: var(--shadow-sm); font-size: 13px; color: var(--color-neutral-700)')}>
               <span style={css('display: inline-flex; align-items: center; gap: 9px; font-weight: 600; color: var(--color-neutral-900)')}>
@@ -101,11 +97,9 @@ export default function Landing() {
           <div style={css('max-width: 620px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start')}>
             <h2 style={css('margin: 0; font-size: clamp(32px, 4.4vw, 56px); line-height: 1.05')}>Put a router on your first plant.</h2>
             <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 46ch')}>The readings are open to everyone. Sign in with Google to acknowledge signals and send a test signal across the plant network.</p>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 items-center">
               <Link to="/dashboard" className="btn btn-primary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>Open the dashboard</Link>
-              <Link to="/account" onClick={signIn} className="btn btn-secondary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px; gap: 11px; background: var(--color-neutral-100); border-color: var(--color-neutral-300)')}>
-                <GoogleMark size={19} />Sign in
-              </Link>
+              <GoogleSignInButton size="large" shape="pill" />
             </div>
             <form onSubmit={(e) => { e.preventDefault(); setSent(true); }} style={css('display: flex; flex-wrap: wrap; gap: 10px; width: 100%; max-width: 520px')}>
               <input className="input" type="email" required placeholder="you@example.com" style={css('flex: 1 1 240px; border-radius: 999px; padding: 13px 20px')} />

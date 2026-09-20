@@ -1,23 +1,18 @@
 # saplink-web box:  docker compose -f compose.web.yaml up -d --build
-# Static only, no build step -- the frontend (app/frontend/) is plain HTML/CSS/JS,
-# not a Vite project. Caddy serves it directly. No node on the host.
+# `build` compiles the Vite/React app (app/frontend/) into app/frontend/dist,
+# then exits; caddy serves that directory. No node on the host otherwise.
 services:
-  # One-shot Vite build, run by deploy.sh as `run --rm build` before caddy is
-  # restarted: compiles app/frontend/ -> app/frontend/dist/, which caddy serves.
-  # Keeps node off the host. `profiles` hides it from `up -d` so an exited build
-  # container is never mistaken for a service that should be running.
-  # npm install, not ci -- package-lock.json is gitignored, so there is no lock
-  # on the box to install from.
   build:
     image: node:22-alpine
     working_dir: /app
     volumes:
       - ./app/frontend:/app
     environment:
-      # Baked into the bundle at build time: the api box is a separate origin.
       VITE_API_BASE_URL: https://api.${SAPLINK_WEB_DOMAIN:?set SAPLINK_WEB_DOMAIN in .env}
-    command: sh -c "npm install && npm run build"
-    profiles: ["build"]
+      VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    # `npm ci` needs a lockfile; fall back to install until one is committed.
+    command: sh -c "npm ci || npm install && npm run build"
+    restart: "no"
 
   caddy:
     image: caddy:2-alpine
@@ -25,11 +20,15 @@ services:
     volumes:
       - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
       - ./app/frontend/dist:/srv:ro
+      - ./app/frontend/dist:/srv:ro
       - caddy-data:/data
       - caddy-config:/config
     environment:
       SAPLINK_WEB_DOMAIN: ${SAPLINK_WEB_DOMAIN:?set SAPLINK_WEB_DOMAIN in .env}
     restart: unless-stopped
+    # No depends_on -- deploy.sh runs `build` explicitly before `up -d`, because
+    # compose can treat an already-exited build container as "completed" and
+    # skip it, silently serving the previous bundle.
 
 volumes:
   caddy-data:

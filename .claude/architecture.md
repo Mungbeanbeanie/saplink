@@ -45,9 +45,9 @@ app/backend/
 
 ```
 Caddyfile.api       --> consumed by compose.api.yaml's `caddy` service (reverse-proxies to api:8000, auto TLS)
-Caddyfile.web       --> consumed by compose.web.yaml's `caddy` service (serves app/frontend/ static files)
+Caddyfile.web       --> consumed by compose.web.yaml's `caddy` service (serves app/frontend/dist/, built fresh each deploy)
 compose.api.yaml    --> app/backend/Dockerfile (api service), caddy:2-alpine image, Caddyfile.api
-compose.web.yaml    --> caddy:2-alpine image, Caddyfile.web, app/frontend/ (read-only bind mount)
+compose.web.yaml    --> node:22-alpine `build` service (npm ci && npm run build, app/frontend/ -> app/frontend/dist/), caddy:2-alpine image, Caddyfile.web, app/frontend/dist/ (read-only bind mount)
 deploy.sh           --> ssh + git pull + `docker compose -f compose.<role>.yaml up -d --build`, per compose file above
 ```
 
@@ -55,23 +55,35 @@ Two independent Vultr boxes (`saplink-api`, `saplink-web`), each with its own Ca
 
 ## Frontend (`app/frontend/`)
 
-```
-index.html              --> js/svg.js, js/config.js, js/store.js, js/pages/*.js, js/app.js (script tags, load order matters)
-css/organic.css          (leaf — base/reset + procedural canopy-scene styling)
-css/site.css             (leaf — page/component styling)
+React 18 + Vite + React Router + Tailwind, built to static `dist/` (see Deploy infrastructure above) — this is the second rewrite; a vanilla hash-routed JS version existed briefly in between and is gone, not kept.
 
-js/svg.js                (leaf — extracted inline art: logo, Google icon, landing diagrams)
-js/config.js             (leaf — Saplink.config incl. apiBase, Saplink.api(path,opts) fetch helper, roster/probes fixtures)
-js/store.js             --> window.claude (optional artifact DB capability), localStorage   (signal-history persistence, feeds dashboard chart + CSV/JSON export)
-js/pages/landing.js     --> js/svg.js, js/config.js   (#/ route: canopy scene + health-pill polling /api/health)
-js/pages/how.js         --> js/config.js               (#/how-it-works route, static)
-js/pages/dashboard.js   --> js/config.js, js/store.js  (#/dashboard route — the only page hitting live readings: /api/health, /api/readings/history, /api/alerts/manual)
-js/pages/account.js     --> js/config.js               (#/account route, static fixture data)
-js/app.js               --> js/config.js, js/pages/*.js  (hash router + header/nav shell + local-only sign-in state)
+```
+index.html               --> src/main.jsx (Vite entry)
+src/main.jsx             --> react-router-dom, src/pages/*.jsx, src/components/{Mascot,IntroLoader}.jsx
+
+src/lib/api.js            (leaf — API_BASE from VITE_API_BASE_URL, apiFetch(path,opts))
+src/lib/auth.js          --> src/lib/api.js   (real Google Identity Services; module-level singleton + useAuth() via useSyncExternalStore, since GIS's callback fires outside React's render cycle)
+src/lib/news.js          --> src/lib/api.js   (useNews(limit) hook, polls GET /api/news)
+src/lib/useHealth.js     --> src/lib/api.js   (GET /api/health polling hook)
+src/lib/css.js            (leaf — CSS-declaration-string -> React style object helper)
+src/data/roster.js         (leaf — the 5-plant fixture: dashboard map/tabs, account's router list; not reconciled with /api/health's real `devices`)
+
+src/components/GoogleSignInButton.jsx --> src/lib/auth.js   (renders Google's own button into a ref'd container; used by Header/Landing/Account/Dashboard wherever "Sign in" appears)
+src/components/Header.jsx             --> src/lib/auth.js, src/components/{Logo,GoogleSignInButton}.jsx
+src/components/{Copyright,Logo,Mascot,IntroLoader}.jsx  (leaves — no data deps)
+src/scene/BranchScene.jsx              (leaf — procedural canopy scene behind the landing hero)
+src/art/artwork.js                     (leaf — static SVG art strings)
+
+src/pages/Landing.jsx     --> src/components/Header.jsx, src/components/GoogleSignInButton.jsx, src/scene/BranchScene.jsx, src/lib/useHealth.js
+src/pages/HowItWorks.jsx --> src/components/Header.jsx   (static)
+src/pages/Dashboard.jsx  --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/{api,auth,news}.js, src/data/roster.js   (the only page hitting live readings: /api/health, /api/readings/history, /api/alerts/manual; also renders the news card)
+src/pages/Account.jsx    --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/auth.js, src/data/roster.js   (gates on signedIn)
+
+server/index.js            (leaf, LOCAL DEV ONLY — Express fake API for `npm run dev`, not part of deployment)
 ```
 
-No build step, no npm, no React/Vite/Tailwind — this diverges from `plan.md`'s originally-planned React/Vite/Tailwind SPA (see that phase for why). `Saplink.config.apiBase` (in `js/config.js`) is the one thing every page needs, replacing the earlier planned `window.SAPLINK_API` global.
+`API_BASE`/`VITE_GOOGLE_CLIENT_ID` are both build-time env vars (`import.meta.env.*`), injected by `compose.web.yaml`'s `build` service — there is no runtime config file the way the earlier vanilla pass had one.
 
 ## Cross-cutting dependency (not a file import, a network contract)
 
-`esp32/Saplink/src/sensor_main.cpp` (and eventually `combo_main.cpp`) <--HTTP--> `app/backend/main.py`'s `Batch` model <--HTTP--> `app/frontend`'s fetch calls against `window.SAPLINK_API`. All three must agree on the same JSON shape — canonically documented in `overview.md`'s "Interface Schema" bullet (update there first, then this file and `plan.md`, to avoid the same fields drifting across three separate descriptions of one contract).
+`esp32/Saplink/src/combo_main.cpp` (posting readings and, per the firmware, alerts too) <--HTTP--> `app/backend/main.py`'s `Batch`/`AlertIn` models <--HTTP--> `app/frontend/src/lib/api.js`'s `apiFetch()` calls. All three must agree on the same JSON shape — canonically documented in `overview.md`'s "Interface Schema" bullet (update there first, then this file and `plan.md`, to avoid the same fields drifting across three separate descriptions of one contract). Google ID tokens are a separate, parallel contract: `app/frontend/src/lib/auth.js` <--HTTP--> `main.py`'s `_google_user()`/`GET /api/auth/me`, verified against `GOOGLE_CLIENT_ID`, which must match on both sides exactly.

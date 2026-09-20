@@ -1,19 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../components/Header.jsx';
+import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import Copyright from '../components/Copyright.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
 import { roster, nodeLinks } from '../data/roster.js';
+import { useNews } from '../lib/news.js';
 
 const DEFAULT_THRESHOLD_MV = 70; // real backend doesn't expose a threshold yet -- see spike rendering below
 
 const fmtTime = (t) => (t ? new Date(t).toTimeString().slice(0, 8) : '—');
+const fmtAgo = (ts) => {
+  if (ts == null) return '—';
+  const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+  return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago';
+};
 
-const CONDITIONS = [
-  ['68%', 'Air humidity'], ['41%', 'Soil moisture'],
-  ['14.2°C', 'Air temperature'], ['320 lux', 'Light level']
-];
+// Air humidity/temperature/light have no sensor in the BOM and no backend
+// source (see plan.md's Phase 6 note) -- still hardcoded placeholders.
+// Soil moisture is real: wired to Contract A's soil_mv below.
+const WEATHER_CONDITIONS = [['68%', 'Air humidity'], ['14.2°C', 'Air temperature'], ['320 lux', 'Light level']];
 
 const NODE_TONE = {
   ok: ['var(--color-accent-2-200)', 'var(--color-accent-2-900)', '#56633f'],
@@ -21,7 +28,8 @@ const NODE_TONE = {
 };
 
 export default function Dashboard() {
-  const { signedIn, signIn } = useAuth();
+  const { signedIn, token } = useAuth();
+  const news = useNews(6);
   const [device, setDevice] = useState('sense-1');
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
@@ -34,6 +42,7 @@ export default function Dashboard() {
   const [hoverId, setHoverId] = useState(null);
   const [replayNote, setReplayNote] = useState('');
   const [exportNote, setExportNote] = useState('');
+  const [soilMv, setSoilMv] = useState(null);
   const lastId = useRef(0);
 
   // Readings: the API when it answers, a labelled preview feed when it does not.
@@ -52,6 +61,7 @@ export default function Dashboard() {
       setLive(true);
       setBaseline(last.baseline_mv != null ? last.baseline_mv : 42);
       setSrc(last.src || 'sim');
+      if (last.soil_mv != null) setSoilMv(last.soil_mv);
       if (last.event === 'spike') setSpike({ mv: last.mv, threshold: undefined, t: now });
       setSamples((prev) => prev.concat(rows.map((r) => ({ t: now, mv: r.mv, event: r.event, seq: r.seq }))).slice(-180));
     };
@@ -146,11 +156,17 @@ export default function Dashboard() {
   const sendReplay = () => {
     if (!signedIn) return;
     setReplayNote('Sending…');
-    // /api/alerts/manual only exists on the local dev simulator (server/index.js)
-    // -- the real backend's alert control plane isn't built yet (see
-    // app/backend/main.py's module docstring), so a 404 there is expected and
-    // falls back to the same "shown as a preview" message the old site used.
-    apiFetch('/api/alerts/manual', { method: 'POST' }).then(
+    // /api/alerts/manual only exists on the local dev simulator (server/index.js).
+    // The real backend's alert plane IS built now (POST /api/alerts, GET
+    // /api/alerts/pending, POST /api/alerts/{id}/ack -- see app/backend/main.py),
+    // but /api/alerts/manual was deliberately dropped: "no browser-reachable
+    // write can run the pump" (main.py's module docstring). A 404 against the
+    // real API is expected and permanent by design, not a gap to close --
+    // falls back to the same "shown as a preview" message either way.
+    apiFetch('/api/alerts/manual', {
+      method: 'POST',
+      headers: token ? { Authorization: 'Bearer ' + token } : undefined
+    }).then(
       (r) => (r.ok ? Promise.resolve() : Promise.reject()),
       () => Promise.reject()
     ).then(
@@ -373,13 +389,36 @@ export default function Dashboard() {
               <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>Each router measures these alongside the electrical signal, because weather shapes how a plant reacts.</p>
             </div>
             <div style={css('flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px')}>
-              {CONDITIONS.map(([value, label]) => (
+              <div style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
+                <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{soilMv != null ? soilMv.toFixed(0) + ' mV' : '—'}</div>
+                <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Soil moisture (raw)</div>
+              </div>
+              {WEATHER_CONDITIONS.map(([value, label]) => (
                 <div key={label} style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
                   <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{value}</div>
                   <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>{label}</div>
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 14px')}>
+            <div>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Ecology news</h2>
+              <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>Wider context from outside the network, refreshed from real ecology/environment sources.</p>
+            </div>
+            {news.length ? (
+              <ul style={css('display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none')}>
+                {news.map((n) => (
+                  <li key={n.id} style={css('display: flex; flex-direction: column; gap: 2px')}>
+                    <a href={n.link} target="_blank" rel="noreferrer" style={css('font-size: 14px; font-weight: 600; color: var(--color-neutral-900); text-decoration: none')}>{n.title}</a>
+                    <span style={css('font-size: 12px; color: var(--color-neutral-600)')}>{n.source} · {fmtAgo(n.published_ts)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="card-body" style={css('margin: 0; font-size: 14px; color: var(--color-neutral-600)')}>No news fetched yet.</p>
+            )}
           </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
@@ -479,9 +518,13 @@ export default function Dashboard() {
               <span className="tag tag-outline" style={css('border-radius: 999px')}>sign-in needed</span>
             </div>
             <p className="card-body" style={css('margin: 0; font-size: 14px')}>Replays a recorded signal so you can check the whole chain — router, alert, relay — without waiting for the plant to react.</p>
-            <button type="button" onClick={signedIn ? sendReplay : signIn} className="btn btn-primary btn-block" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>
-              {signedIn ? 'Send test signal' : 'Sign in to send'}
-            </button>
+            {signedIn ? (
+              <button type="button" onClick={sendReplay} className="btn btn-primary btn-block" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>
+                Send test signal
+              </button>
+            ) : (
+              <GoogleSignInButton size="large" shape="pill" />
+            )}
             <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>
               {replayNote || (signedIn ? 'Recorded against your Google account.' : 'Anyone can view the readings; sending needs sign-in.')}
             </p>

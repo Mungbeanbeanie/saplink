@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
+import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import Copyright from '../components/Copyright.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
@@ -11,9 +12,23 @@ const tone = (status) => status === 'ok'
   : { bg: 'var(--color-accent-200)', fg: 'var(--color-accent-900)', label: 'Battery low' };
 
 export default function Account() {
-  const { user, signOut } = useAuth();
+  const { signedIn, email, signOut } = useAuth();
   const navigate = useNavigate();
-  const initials = user.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const initials = (email || '?').split('@')[0].split(/[._-]+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+  if (!signedIn) {
+    return (
+      <div style={css('min-height: 100vh; background: var(--color-bg)')}>
+        <Header />
+        <main style={css('padding: clamp(20px, 3vw, 40px) clamp(20px, 5vw, 64px) 80px; display: flex; flex-direction: column; gap: 18px; max-width: 640px')}>
+          <div className="card-kicker" style={css('margin-bottom: 6px')}>Account</div>
+          <h1 style={css('margin: 0; font-size: clamp(26px, 3vw, 36px)')}>Sign in to see your account</h1>
+          <p style={css('margin: 0; color: var(--color-neutral-700)')}>Anyone can view the readings; signing in with Google lets you send a test signal and see your linked routers here.</p>
+          <GoogleSignInButton size="large" shape="pill" />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div style={css('min-height: 100vh; background: var(--color-bg)')}>
@@ -24,12 +39,8 @@ export default function Account() {
         <div className="card elev-md" style={css('border-radius: var(--radius-lg); padding: clamp(20px, 2.4vw, 30px); display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: clamp(18px, 2.4vw, 30px)')}>
           <div style={css('display: flex; align-items: center; justify-content: center; width: 96px; height: 96px; border-radius: 999px; background: var(--color-accent-2-600); color: var(--color-neutral-100); font-family: var(--font-heading); font-size: 34px; box-shadow: var(--shadow-sm)')}>{initials}</div>
           <div style={css('flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px')}>
-            <div style={css('font-family: var(--font-heading); font-size: 26px')}>{user.name}</div>
-            <div style={css('font-size: 15px; color: var(--color-neutral-700)')}>{user.email}</div>
-            <div className="flex flex-wrap gap-2" style={css('margin-top: 6px')}>
-              <span className="tag tag-accent-2" style={css('border-radius: 999px')}>{user.role}</span>
-              <span className="tag tag-neutral" style={css('border-radius: 999px')}>Joined March 2026</span>
-            </div>
+            <div style={css('font-family: var(--font-heading); font-size: 26px')}>{email}</div>
+            <div style={css('font-size: 15px; color: var(--color-neutral-700)')}>Signed in with Google</div>
           </div>
           <button type="button" onClick={() => { signOut(); navigate('/'); }} className="btn btn-secondary" style={css('border-radius: 999px; padding: 12px 24px')}>Sign out</button>
         </div>

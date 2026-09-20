@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Logo from './Logo.jsx';
-import GoogleMark from './GoogleMark.jsx';
+import GoogleSignInButton from './GoogleSignInButton.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 
@@ -13,8 +13,8 @@ const LINKS = [
 
 export default function Header({ translucent = false }) {
   const { pathname } = useLocation();
-  const { signedIn, signIn, user } = useAuth();
-  const initials = user.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('');
+  const { signedIn, email } = useAuth();
+  const initials = (email || '?').split('@')[0].split(/[._-]+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
   return (
     <header
@@ -37,13 +37,11 @@ export default function Header({ translucent = false }) {
           </Link>
         ))}
         {signedIn ? (
-          <Link to="/account" title={user.name} style={css('display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: var(--color-accent-2-600); color: var(--color-neutral-100); font-weight: 600; font-size: 14px; border: 2px solid var(--color-neutral-100); box-shadow: var(--shadow-sm)')}>
+          <Link to="/account" title={email} style={css('display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: var(--color-accent-2-600); color: var(--color-neutral-100); font-weight: 600; font-size: 14px; border: 2px solid var(--color-neutral-100); box-shadow: var(--shadow-sm)')}>
             {initials}
           </Link>
         ) : (
-          <Link to="/account" onClick={signIn} className="btn btn-secondary" style={css('border-radius: 999px; gap: 9px; background: var(--color-neutral-100); border-color: var(--color-neutral-300)')}>
-            <GoogleMark />Sign in
-          </Link>
+          <GoogleSignInButton size="medium" />
         )}
       </nav>
     </header>

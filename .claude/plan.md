@@ -118,34 +118,29 @@ Discrete fires plus an ack state machine, driving the actuator. Phase 1's `packe
 
 ---
 
-## Phase 6: Frontend Dashboard (vanilla JS, standalone)
+## Phase 6: Frontend Dashboard (React + Vite, standalone)
 
-- Consumes only Phase 5's API (readings today; `/api/alerts/manual` once Phase 5 lands it). Fully decoupled — no shared code with the backend beyond the schema shape.
-- **DIVERGES from the originally-planned React/Vite/Tailwind SPA** (that plan's checklist is kept below for history). The frontend was imported already-built as a vanilla, hash-routed multi-page JS app — rebuilding an already-complete, already-designed site in React would be pure churn with no functional benefit. No build step, no npm, no node on the host.
-- Served from the `saplink-web` box. Caddy serves `app/frontend/` directly (see `compose.web.yaml`/`Caddyfile.web`) — no `dist/`, no build stage.
+- Consumes Phase 5's readings/alerts API and Phase 8's news API. Fully decoupled — no shared code with the backend beyond the schema shape.
+- **Rewritten a second time.** It was first imported as a vanilla, hash-routed multi-page JS app (that pass's fixes and its own "React would be pure churn" reasoning are now moot — superseded, not kept, since a real rewrite landed on top rather than iterating on the vanilla one). It's now the originally-planned stack after all: React 18 + React Router + Vite + Tailwind, built to static `dist/` and served by Caddy. Because it was rewritten from scratch rather than incrementally, it reverted several things already fixed in the vanilla pass (sign-in, moisture, the deploy config) — this entry documents the current, real state, not a diff against the vanilla version.
+- Served from the `saplink-web` box: `compose.web.yaml`'s `build` service (`node:22-alpine`, `npm ci && npm run build`) produces `app/frontend/dist/`, which Caddy then serves — see `Caddyfile.web`. `server/index.js` (Express) is a **local dev convenience only**, an in-memory fake API for `npm run dev` — not part of the deployed site.
 
-- [x] `app/frontend/index.html` — shell markup: `#header-slot`/`#view` mount points, script tags in load order (art + config, then one file per page, then the router).
-- [x] `app/frontend/js/config.js` — `Saplink.config` (`apiBase`, `scene`, `roster`, `probes`) and `Saplink.api(path, opts)`, the one fetch helper every page uses.
-- [x] `app/frontend/js/app.js` — hash router + shell: sign-in state (local-only today, see gap below), header/nav render, route table (`#/`, `#/how-it-works`, `#/dashboard`, `#/account`).
-- [x] `app/frontend/js/store.js` — signal-history persistence: localStorage always, plus an artifact-hosted shared DB when available; feeds the dashboard's chart and CSV/JSON export.
-- [x] `app/frontend/js/svg.js` — extracted inline art (logo, Google button icon, landing-page diagrams).
-- [x] `app/frontend/js/pages/{landing,how,dashboard,account}.js` — one file per route. `dashboard.js` is the only one that talks to the live API (`/api/health`, `/api/readings/history`, `/api/alerts/manual`); the rest are static or `/api/health`-only.
-- [x] `app/frontend/css/{organic,site}.css` — styling, unchanged from import.
+- [x] `app/frontend/src/main.jsx` — React Router setup (`/`, `/how-it-works`, `/dashboard`, `/account`), mounts `Mascot`/`IntroLoader` once outside the route tree so they persist across navigation.
+- [x] `app/frontend/src/pages/{Landing,HowItWorks,Dashboard,Account}.jsx` — one file per route, matching the vanilla pass's page split.
+- [x] `app/frontend/src/lib/api.js` — `API_BASE` from `import.meta.env.VITE_API_BASE_URL` (build-time, empty = same-origin for local dev), `apiFetch(path, opts)`.
+- [x] `app/frontend/src/lib/auth.js` — real Google Identity Services, module-level singleton exposed via `useAuth()` (`useSyncExternalStore`, since GIS's callback fires outside React's render cycle). `renderGoogleButton(el, opts)` renders Google's own button (reliability over a custom button driving `prompt()`) into a ref'd container — used by the new `src/components/GoogleSignInButton.jsx`, which replaced every "Sign in" link in Header/Landing/Account/Dashboard. Calls the backend's `GET /api/auth/me` (Phase 7) for the server-verified email; no ID token is trusted client-side, no manual token persistence across reloads (GIS's `auto_select` re-fires the callback itself). `Account.jsx` now gates on `signedIn` — shows a sign-in prompt instead of crashing on a nonexistent user fixture.
+- [x] `app/frontend/src/lib/news.js` — `useNews(limit)` hook polling Phase 8's `GET /api/news`; rendered as a card on the dashboard (title/source/relative time, links out).
+- [x] `app/frontend/src/lib/useHealth.js` — `/api/health` polling hook (Landing uses it directly; Dashboard has its own inline copy of the same polling, a small duplication left as-is).
+- [x] `app/frontend/src/data/roster.js` — the 5-plant fixture driving the dashboard map/tabs and the account page's router list. Still not reconciled with `/api/health`'s real `devices` list, and device selection on the dashboard is still cosmetic-only (no per-device filter exists on `/api/readings/history`) — same pre-existing gap as the vanilla pass, needs a backend change to actually close, bigger than this pass.
+- [x] `app/frontend/vite.config.js` / `tailwind.config.js` / `postcss.config.js` — standard Vite/React/Tailwind toolchain config.
+- [x] `app/frontend/server/index.js` — local-dev-only Express fake API, shaped like the real backend's responses so no frontend code differs between the two; not part of deployment.
 
-**Wiring fix applied** (the frontend was imported already-built but not actually connected to the live backend): `config.js`'s `apiBase` was `''` (same-origin), which 404s given `saplink-web`/`saplink-api` are separate domains — set to `https://api.saplink.us`. `dashboard.js`'s `ingest()` read `d.readings`/`r.id`/`r.timestamp_ms`, none of which `main.py` returns (`{last_id, samples:[{batch_id,...,t_ms,...}]}`) — silently zero rows every poll, no error, so the chart never updated even against a healthy API. Fixed to read `d.samples`, use the response's `last_id` for polling continuity, and `r.t_ms`. `main.py` gained a `seq` field in `/api/readings/history`'s per-sample output (additive, mirrors how `soil_mv` already rides along) so the dashboard's existing dropped-batch completeness feature has real data. `compose.web.yaml`/`Caddyfile.web` dropped the Vite `build` service and now point Caddy straight at `app/frontend/`.
+**Moisture (built):** `Dashboard.jsx` tracks `soil_mv` from the latest sample and shows it in the Conditions card as real raw mV, labeled "Soil moisture (raw)" rather than a fake `%` — a true percentage needs a two-point probe calibration not present in the wire format.
 
-**Known gaps, deliberately not fixed in this pass:**
-- No `threshold_mv` exists anywhere in Contract A — the dashboard's spike detail falls back to a hardcoded 70mV. Real per-event thresholds need Phase 5's backend classifier to exist and publish one.
+**Weather — OPEN DECISION, still not built:** Air humidity/Air temperature/Light level remain hardcoded placeholders (`WEATHER_CONDITIONS` in `Dashboard.jsx`). No sensor exists for any of the three today (outside the current BOM). Humidity/temp could plausibly come from an external weather API keyed by each router's location, but `roster.js` only has SVG map x/y pixel coordinates, not real lat/lon. Light level (lux) has no weather-API equivalent at all — that one needs an actual light sensor regardless of any API integration.
 
-**Sign-in wiring (built):** the frontend's "Sign in" now uses real Google Identity Services (`app/frontend/js/auth.js`, new file) instead of a `localStorage` flag — it calls the backend's already-built `GET /api/auth/me` (Phase 7) to get the server-verified email, and renders Google's own button (reliability over a custom button driving `prompt()`) in the header, landing hero, and landing join section. The account page now shows the real signed-in email instead of a fabricated fixture person (no role/join-date shown — no real source for those exists, Phase 7 has no users table). The replay button (`POST /api/alerts/manual`) now sends `Authorization: Bearer <id token>` too — still 404-gracefully today since that route is Phase 5 and unbuilt, but ready for when Phase 7's `_google_user` gets hung off it, as already noted there. **Operational requirement, not something that can be filled in from here:** `js/config.js`'s `googleClientId` ships as a placeholder (`REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID`) — must be set to the same real OAuth Web Client ID as the api box's `GOOGLE_CLIENT_ID` .env value (see Phase 7's Gotchas for how to create one). Until then, sign-in buttons don't render and everything no-ops rather than crashing.
+**Operational requirement, not something that can be filled in from here:** real sign-in needs `VITE_GOOGLE_CLIENT_ID` — ships as an empty/unset placeholder (`.env.example`), sign-in buttons simply don't render until it's set to the same real OAuth Web Client ID as the api box's `GOOGLE_CLIENT_ID` (see Phase 7's Gotchas for how to create one). `compose.web.yaml`'s `build` service now passes it through from the web box's own `GOOGLE_CLIENT_ID` env var (see Runbook's provisioning section — the web box's `.env` needs this added).
 
-**Follow-up wiring:** `dashboard.js`'s "Conditions" card had four hardcoded fake values. Soil moisture now shows the real (uncalibrated) `soil_mv` reading, in raw mV — already flowed through `/api/readings/history` since the Phase 7 work, just unused by the frontend until now; labeled "raw" rather than shown as a fake `%` since a true moisture percentage needs a two-point probe calibration not present in the wire format. **OPEN DECISION, not built:** Air humidity/Air temperature/Light level remain hardcoded placeholders — no sensor exists for any of the three today (outside the current BOM). Humidity/temp could plausibly come from an external weather API keyed by each router's location, but `roster` today only has SVG map x/y pixel coordinates, not real lat/lon. Light level (lux) has no weather-API equivalent at all — that one needs an actual light sensor regardless of any API integration.
-
-Superseded original plan (React/Vite/Tailwind SPA, kept for history, not being built):
-- ~~`app/frontend/package.json` — Node scaffold: `react`, `react-dom`, `vite`, `tailwindcss` + PostCSS/autoprefixer peers.~~
-- ~~`app/frontend/src/main.jsx` — `ReactDOM.createRoot(...).render(<App />)`.~~
-- ~~`app/frontend/src/App.jsx` — dashboard layout: live baseline panel(s), a VP-spike alert banner, an actuation-status indicator, a manual replay-trigger button.~~
-- ~~`app/frontend/src/lib/dataFeed.js` — `useReadings()` hook polling `/api/readings/latest`/`/api/readings/history`.~~
+**`/api/alerts/manual` stays permanently unreachable from the real API, by design, not a gap:** the dev simulator fakes it so "send a test signal" works locally, but the real backend deliberately dropped this route (`main.py`'s module docstring: "no browser-reachable write can run the pump"). The button now sends `Authorization: Bearer <id token>` when it calls it, but will 404 against the real API regardless of sign-in state — falls back to the same labelled preview message as an unreachable API.
 
 ---
 
@@ -168,9 +163,9 @@ Gotchas, in the order they bite:
 
 ---
 
-## Phase 8: Ecology News Ingestion (backend only)
+## Phase 8: Ecology News Ingestion
 
-- Backend-only in this pass — **no frontend consumer yet**, deliberately deferred until the frontend (currently a static export, see the frontend's own notes) is re-exported. Consuming it is future work, not scoped here.
+- Now consumed by the frontend too (Phase 6's `src/lib/news.js` + a Dashboard card) — no backend change needed for that, `GET /api/news` was already public and complete.
 - Split into its own file rather than added to `main.py` — the first real use of that file's own escape hatch ("split back out if it gets unwieldy"): fetching third-party RSS and running a background thread is a self-contained concern, orthogonal to request handling.
 
 - [x] `app/backend/news.py` — `NEWS_FEEDS`, 5 feeds verified by actually fetching each one (not guessed — one candidate, ScienceDaily's `earth_climate/environment.xml`, 404s and is deliberately not used): `news.mongabay.com/feed/`, `theguardian.com/environment/rss`, `e360.yale.edu/feed.xml`, `grist.org/feed/`, `sciencedaily.com/rss/earth_climate.xml`. `ensure_table(db)` creates a `news(id, source, guid UNIQUE, title, link, summary, published_ts, fetched_ts)` table. `refresh_news(db)` fetches every feed via `feedparser` (RSS/Atom's real dialect/date/encoding variance across publishers is exactly what a library beats hand-rolling for, unlike this codebase's fixed 6-field JSON elsewhere), `INSERT OR IGNORE` keyed on guid so re-fetching never duplicates; one bad feed can't block the others. `start_background_refresh(db, interval_s)` runs it on a daemon thread; a `interval_s <= 0` no-ops, so tests/CI can disable it.
@@ -216,7 +211,7 @@ Domain is `saplink.us` at **Porkbun**. Its default wildcard `CNAME *.saplink.us 
 4. Both boxes: `git clone https://github.com/Mungbeanbeanie/saplink.git /opt/saplink`. (The repo is **public**, so no GitHub deploy keys are needed. If it ever goes private: `ssh-keygen -t ed25519` per box, each pubkey added as its own read-only deploy key — multiple keys per repo is fine; one key can't be reused across repos.)
 5. `/opt/saplink/.env`, gitignored, `chmod 600`:
    - **api box:** `SAPLINK_API_DOMAIN=api.saplink.us`, `SAPLINK_TOKEN` (`openssl rand -hex 32`), `SAPLINK_WEB_ORIGIN=https://saplink.us,https://www.saplink.us`, and (Phase 7, landed) `GOOGLE_CLIENT_ID` (+ optional `SAPLINK_ALLOWED_EMAILS`, CSV; empty = any Google account). Both are soft-defaulted in `compose.api.yaml`, so an unset `GOOGLE_CLIENT_ID` 503s `/api/auth/me` only and leaves ingestion running
-   - **web box:** `SAPLINK_WEB_DOMAIN=saplink.us`
+   - **web box:** `SAPLINK_WEB_DOMAIN=saplink.us`, and (Phase 6, for real sign-in) `GOOGLE_CLIENT_ID` — same value as the api box's, `compose.web.yaml`'s `build` service passes it through as `VITE_GOOGLE_CLIENT_ID` at build time. Unset, sign-in buttons just don't render.
 6. Local `~/.ssh/config`: `Host saplink-api` / `Host saplink-web`, both `User root`, `IdentityFile ~/.ssh/hackrice_deploy`. Required by `deploy.sh`, which addresses the boxes only by those nicknames.
 
 ## Deploy
