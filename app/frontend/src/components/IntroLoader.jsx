@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 // Procedurally builds a growing branch/flower scene: a seeded PRNG grows six
 // limbs out from a center hub, recursively branching (up to depth 5) with a
@@ -209,23 +209,31 @@ class GrowthScene extends React.Component {
 
 const MAX = 9000; // absolute safety cap (ms) if growth math or rAF ever stalls
 
-// Plays the growing-branch scene once per browser session, then fades into
+// Whether to show the intro at all -- computed synchronously (not in an
+// effect) so it's already correct on the very first render, with no tick
+// where the real page is visible before the overlay appears. Every fresh
+// load/refresh replays it (no "seen this session" flag): this is meant to be
+// the first thing shown whenever the site opens, landing page included.
+function shouldShowIntro() {
+  if (typeof window === 'undefined') return false;
+  return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// Plays the growing-branch scene on every full page load, then fades into
 // the site. Never plays for people who prefer reduced motion. Skip button
 // always works, and a stalled scene just opens the site (MAX timeout).
 export default function IntroLoader() {
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(shouldShowIntro);
   const [leaving, setLeaving] = useState(false);
   const skipRef = useRef(null);
   const doneRef = useRef(false);
   const finishRef = useRef(() => {});
 
-  useEffect(() => {
-    let seen = false;
-    try { seen = sessionStorage.getItem('saplink.intro') === '1'; } catch (e) {}
-    const calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (seen || calm) return;
-    document.documentElement.classList.add('is-loading');
-    setShow(true);
+  // useLayoutEffect (not useEffect) so this lands before the browser paints
+  // the first frame -- the scroll lock is in place from that very first
+  // paint, not one tick after it.
+  useLayoutEffect(() => {
+    if (show) document.documentElement.classList.add('is-loading');
   }, []);
 
   useEffect(() => {
@@ -234,7 +242,6 @@ export default function IntroLoader() {
     const finish = () => {
       if (doneRef.current) return;
       doneRef.current = true;
-      try { sessionStorage.setItem('saplink.intro', '1'); } catch (e) {}
       setLeaving(true);
       document.documentElement.classList.remove('is-loading');
       setTimeout(() => setShow(false), 800);

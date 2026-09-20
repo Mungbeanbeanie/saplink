@@ -25,16 +25,19 @@ html.is-loading, html.is-loading body { overflow: hidden; }
 @keyframes sl-dots { 0% { opacity: .25; } 50% { opacity: 1; } 100% { opacity: .25; } }
 
 /* Mascot: the sprouting seed (src/components/Mascot.jsx), fixed bottom right.
-   Eyes track the cursor, the face swaps to the smiling variant when the cursor
-   comes near, and it blinks on an irregular timer. The bob/shadow/sprout
-   keyframes are written against the artwork's own coordinates. */
+   Eyes track the cursor everywhere on the page, the face swaps to the smiling
+   variant only while the cursor is actually over the mascot (plain CSS
+   :hover -- the svg opts back into pointer events for this even though the
+   wrapper stays click-through), and it blinks on an irregular timer. The
+   bob/shadow/sprout keyframes are written against the artwork's own
+   coordinates. */
 .mascot {
   position: fixed; right: max(16px, env(safe-area-inset-right, 0px));
   bottom: max(16px, env(safe-area-inset-bottom, 0px)); z-index: 45;
   pointer-events: none;
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
 }
-.mascot svg { display: block; overflow: visible; }
+.mascot svg { display: block; overflow: visible; pointer-events: auto; }
 .m-shadow { transform-origin: 360px 541px; animation: mascot-shadow 3.6s ease-in-out infinite; }
 .m-body-g { transform-box: view-box; transform-origin: 360px 530px; animation: mascot-bob 3.6s ease-in-out infinite; }
 .m-sprout { transform-box: view-box; transform-origin: 353px 290px; animation: mascot-sway 4.8s ease-in-out infinite; }
@@ -43,8 +46,8 @@ html.is-loading, html.is-loading body { overflow: hidden; }
 .m-face-idle { transform-box: fill-box; transform-origin: 50% 50%; transition: transform 0.09s ease-out; }
 .m-face-idle.is-blinking { transform: scaleY(.1); }
 .m-face-happy { display: none; }
-.mascot.is-happy .m-face-idle { display: none; }
-.mascot.is-happy .m-face-happy { display: inline; }
+.mascot:hover .m-face-idle { display: none; }
+.mascot:hover .m-face-happy { display: inline; }
 @keyframes mascot-bob { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-9px) scale(.99, 1.015); } }
 @keyframes mascot-shadow { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(.9); opacity: .7; } }
 @keyframes mascot-sway { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(3deg); } }

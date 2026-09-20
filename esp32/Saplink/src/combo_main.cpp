@@ -44,7 +44,14 @@ static const uint32_t kMinActuateGapMs = 30000;
 // uploaded, so at 10000 roughly every third one is. Calibration knob: raise it
 // if uploads cost too much, 0 reverts to event-only and leaves the chart empty
 // between events.
-static const uint32_t kPollMs = 10000;
+// LOWERED to 2000: measured missed-batch rate at 10000 was ~65-84% of quiet-
+// stretch samples (seq gaps of ~3 between uploaded batches). A full loop
+// (sample + POST + poll-pending + ack) takes ~3.7-4.6s measured, so 2000 sits
+// under that floor -- poll_due is now true every loop, not every ~3rd, so
+// (almost) every sampled batch uploads. Total POST volume/hour lands roughly
+// where a queue-and-burst-at-10000 design would have too; this is just the
+// simpler way to get there, no new buffering state needed.
+static const uint32_t kPollMs = 2000;
 
 static Adafruit_ADS1115 ads;
 static bool ads_ok = false;
