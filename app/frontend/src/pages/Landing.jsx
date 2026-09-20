@@ -107,7 +107,7 @@ export default function Landing() {
           <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: clamp(24px, 4vw, 48px); align-items: center')}>
             <div style={css('min-width: 0; display: flex; flex-direction: column; gap: 16px; align-items: flex-start')}>
               <span className="tag tag-accent-2" style={css('border-radius: 999px')}>Our mission</span>
-              <h2 style={css('margin: 0; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08')}>Keep a cleared stand talking while it grows back.</h2>
+              <h2 style={css('margin: 0; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08')}>Deforestation cuts the network. Saplink restores it.</h2>
               <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
                 Deforestation takes the largest species first. Those trees are the ones the rest of the stand depends on, and when they go the younger plants around them lose the signals that told them what was coming.
               </p>
