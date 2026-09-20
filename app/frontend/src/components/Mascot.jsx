@@ -54,6 +54,13 @@ export default function Mascot() {
   // then never comes back for the rest of the session.
   const [alertSeen, setAlertSeen] = useState(false);
   const signInTimerRef = useRef(null);
+  // True while the sign-in alert bubble is showing -- the hop now lands the
+  // mascot close to the clicked button, which sits right under the mouse
+  // that just clicked it, so the browser fires a real mouseenter/mouseleave
+  // on .mascot-stage as the hop animates past the cursor. Hover handlers
+  // must ignore that while the alert (a timer-driven 5s message, not a
+  // hover-driven one) is running, or handleMouseLeave immediately wipes it.
+  const alertActiveRef = useRef(false);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -153,6 +160,7 @@ export default function Mascot() {
   // avoids repeating the article that was just shown when there's more
   // than one to choose from.
   const handleMouseEnter = () => {
+    if (alertActiveRef.current) return;
     setAlertSeen(true);
     if (!news.length) { setArticle({ title: "Still fetching the news feed — check back in a moment.", isFallback: true }); return; }
     let next = news[Math.floor(Math.random() * news.length)];
@@ -162,7 +170,10 @@ export default function Mascot() {
     lastArticleRef.current = next;
     setArticle(next);
   };
-  const handleMouseLeave = () => setArticle(null);
+  const handleMouseLeave = () => {
+    if (alertActiveRef.current) return;
+    setArticle(null);
+  };
 
   // Drag state lives in a plain ref, not React state -- pointermove can fire
   // far more often than a re-render should happen, so position/surprise are
@@ -171,11 +182,13 @@ export default function Mascot() {
   // only piece that becomes React state, since it only flips twice per drag.
   const MAX_DRAG_FOR_SURPRISE = 160; // px of drag distance at which surprise maxes out
   const MAX_MOUTH_R = 28; // comfortably inside the body ellipse (rx 141, ry 113) at the mouth's position -- never spills past the model
-  // Bounded "hop toward" a signed-out dashboard click (see the onNeedsSignIn
-  // effect below) -- a clamped magnitude, not a literal pixel-accurate
-  // relocation onto the clicked button, same convention as MAX_EYE_OFFSET/
-  // MAX_DRAG_FOR_SURPRISE above.
-  const MAX_ALERT_HOP_PX = 260;
+  // Hop toward a signed-out dashboard click (see the onNeedsSignIn effect
+  // below) -- travels most of the real distance to the clicked button
+  // (ALERT_HOP_REACH short of full overlap, so the mascot doesn't sit
+  // directly on top of it), capped only as a safety net for pathological
+  // distances, not as the normal-case limit.
+  const ALERT_HOP_REACH = 0.85;
+  const MAX_ALERT_HOP_PX = 2000;
   const drag = useRef({ raf: null, pointerId: null, startX: 0, startY: 0, startOffX: 0, startOffY: 0, offX: 0, offY: 0, surprise: 0 }).current;
 
   const applyDragVisuals = () => {
@@ -220,15 +233,17 @@ export default function Mascot() {
       const targetX = rect.left + rect.width / 2, targetY = rect.top + rect.height / 2;
       let dx = targetX - restX, dy = targetY - restY;
       const dist = Math.hypot(dx, dy) || 1;
-      const clamp = Math.min(dist, MAX_ALERT_HOP_PX);
-      dx = (dx / dist) * clamp; dy = (dy / dist) * clamp;
+      const reach = Math.min(dist * ALERT_HOP_REACH, MAX_ALERT_HOP_PX);
+      dx = (dx / dist) * reach; dy = (dy / dist) * reach;
       if (drag.raf) { cancelAnimationFrame(drag.raf); drag.raf = null; }
       drag.offX = dx; drag.offY = dy;
       if (stageRef.current) stageRef.current.classList.add('is-hopping');
       applyDragVisuals();
+      alertActiveRef.current = true;
       setArticle({ title: "You'll need to sign in with Google to open the dashboard.", isFallback: true });
       if (signInTimerRef.current) clearTimeout(signInTimerRef.current);
       signInTimerRef.current = setTimeout(() => {
+        alertActiveRef.current = false;
         setArticle(null);
         easeBackToRest();
       }, 5000);
@@ -334,7 +349,7 @@ export default function Mascot() {
           {/* Unread-news badge -- floats above the sprout until the first
               hover, see alertSeen/handleMouseEnter above. */}
           {!alertSeen && (
-            <image className="mascot-alert" href={mascotAlertSprite} x="410" y="114" width="40" height="72" />
+            <image className="mascot-alert" href={mascotAlertSprite} x="390" y="78" width="80" height="144" />
           )}
         </g>
         </svg>
