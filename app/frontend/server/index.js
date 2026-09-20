@@ -58,6 +58,16 @@ app.get('/api/readings/history', (req, res) => {
   res.json({ last_id: lastId, samples });
 });
 
+app.get('/api/weather', (req, res) => {
+  const t = Date.now() / 1000;
+  res.json({
+    location: 'Blacksburg, VA',
+    temperature_f: Number((67 + Math.sin(t / 120) * 4).toFixed(1)),
+    fetched_ts: t,
+    ok: true
+  });
+});
+
 app.get('/api/alerts', (req, res) => res.json({ alerts: alerts.slice(-50) }));
 
 app.post('/api/alerts/manual', (req, res) => {

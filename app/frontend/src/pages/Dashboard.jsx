@@ -11,6 +11,7 @@ import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
 import { useNetwork } from '../lib/network.js';
 import { useStatusHistory } from '../lib/statusHistory.js';
+import { useWeather } from '../lib/weather.js';
 
 // Site-map graph: every node is a real device from /api/network, laid out on
 // a fixed schematic grid -- there's no real per-router GPS/site-layout data
@@ -132,6 +133,12 @@ function wetFraction(device, soilMv) {
 
 const DEFAULT_THRESHOLD_MV = 70; // real backend doesn't expose a threshold yet -- see spike rendering below
 
+// Range the "site" card's thermometer bar maps 0-100% fill across -- a tuned
+// display heuristic (same convention as FULL_GLOW_MV above), not a
+// calibrated comfort/danger range.
+const TEMP_MIN_F = 20;
+const TEMP_MAX_F = 100;
+
 const fmtTime = (t) => (t ? new Date(t).toTimeString().slice(0, 8) : '—');
 const fmtAgo = (ts) => {
   if (ts == null) return '—';
@@ -161,6 +168,7 @@ function niceStep(range, targetTicks) {
 export default function Dashboard() {
   const { signedIn, token } = useAuth();
   const network = useNetwork();
+  const weather = useWeather();
   const graph = useMemo(() => buildSiteGraph(network.nodes), [network.nodes]);
   // Across every real reporting probe right now, not just the selected tab --
   // built to generalize as more probes join, not just today's two. avgWetFrac
@@ -309,6 +317,8 @@ export default function Dashboard() {
   // answers, so the tab bar is never empty.
   const devices = health && health.devices && health.devices.length ? health.devices : [device];
   const connected = health && health.devices ? health.devices.length : 0;
+  const tempF = weather.temperature_f;
+  const tempFrac = tempF == null ? null : Math.min(1, Math.max(0, (tempF - TEMP_MIN_F) / (TEMP_MAX_F - TEMP_MIN_F)));
   const spikeActive = !!spike && !acked;
   const isSim = src !== 'ads1115';
   const online = !!(health && health.ok);
@@ -528,7 +538,20 @@ export default function Dashboard() {
             </div>
             {graph.nodes.length ? (
               <>
-                <div style={css('position: relative; border-radius: var(--radius-lg); background: var(--color-neutral-200)')}>
+                <div style={css('display: flex; gap: 16px; align-items: stretch')}>
+                  <div style={css('flex: none; width: 32px; position: relative')}>
+                    <div style={css('position: absolute; inset: 0; border-radius: 999px; background: var(--color-neutral-300); overflow: hidden')}>
+                      {tempFrac != null && (
+                        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: (tempFrac * 100) + '%', background: 'linear-gradient(to top, #e0559c 0%, #9b4fd1 35%, #ff8a3d 70%, #e2412f 100%)' }} />
+                      )}
+                    </div>
+                    {tempFrac != null && (
+                      <span style={{ position: 'absolute', left: '100%', bottom: (tempFrac * 100) + '%', transform: 'translate(8px, 50%)', zIndex: 5, whiteSpace: 'nowrap', padding: '4px 10px', borderRadius: 'var(--radius-lg)', background: 'var(--color-neutral-900)', color: 'var(--color-neutral-100)', fontSize: 13, fontWeight: 600, boxShadow: 'var(--shadow-md)', pointerEvents: 'none' }}>
+                        {Math.round(tempF)}°F
+                      </span>
+                    )}
+                  </div>
+                  <div style={css('flex: 1; min-width: 0; position: relative; border-radius: var(--radius-lg); background: var(--color-neutral-200)')}>
                   <svg viewBox="0 0 600 300" style={{ width: '100%', height: 'auto', display: 'block' }}>
                     <rect x="0" y="0" width="600" height="300" fill="#e7dcc7" />
                     <defs>
@@ -565,6 +588,7 @@ export default function Dashboard() {
                       {n.id} · {n.activity.toFixed(1)} mV activity
                     </span>
                   ))}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2.5">
                   {graph.nodes.map((n) => {

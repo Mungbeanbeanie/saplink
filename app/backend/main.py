@@ -44,6 +44,11 @@ WEATHER_REFRESH_SECONDS = int(os.environ.get("WEATHER_REFRESH_SECONDS", "1800"))
 # no real deployment-scale target is documented anywhere yet. Tune via env
 # var without a code change; revisit once a real target device count exists.
 NETWORK_TARGET_DEVICES = int(os.environ.get("NETWORK_TARGET_DEVICES", "8"))
+# /api/health's `devices` list is otherwise lifetime distinct devices -- a
+# stale/test device name posted once months ago never expires and inflates
+# "N routers reporting". This bounds it to devices actually heard from
+# recently.
+DEVICE_STALE_SECONDS = int(os.environ.get("DEVICE_STALE_SECONDS", "1800"))
 
 # Browser identity, entirely separate from TOKEN above -- see _google_user().
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -388,7 +393,10 @@ def me(authorization: Annotated[Optional[str], Header()] = None):
 @app.get("/api/health")
 def health():
     n, last_recv = db.execute("SELECT COUNT(*), MAX(recv_ts) FROM batch").fetchone()
-    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch WHERE node_id IS NOT NULL")]
+    cutoff = time.time() - DEVICE_STALE_SECONDS
+    devices = [r[0] for r in db.execute(
+        "SELECT DISTINCT device FROM batch WHERE node_id IS NOT NULL AND recv_ts > ?", (cutoff,)
+    )]
     return {"ok": True, "batches": n, "last_recv": last_recv, "devices": devices}
 
 
