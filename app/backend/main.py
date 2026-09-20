@@ -31,6 +31,7 @@ from google.oauth2 import id_token
 from pydantic import BaseModel, Field
 
 import news
+import weather
 
 DB_PATH = os.environ.get("DB_PATH", "saplink.db")
 TOKEN = os.environ.get("SAPLINK_TOKEN", "dev-token")
@@ -38,6 +39,7 @@ WEB_ORIGINS = [o for o in os.environ.get("SAPLINK_WEB_ORIGIN", "").split(",") if
 # 30 min default; tests/CI set this to 0 so `python test_ingest.py` never makes
 # real outbound HTTP calls to the news feeds.
 NEWS_REFRESH_SECONDS = int(os.environ.get("NEWS_REFRESH_SECONDS", "1800"))
+WEATHER_REFRESH_SECONDS = int(os.environ.get("WEATHER_REFRESH_SECONDS", "1800"))
 # ARBITRARY starting heuristic for the dashboard's site-map density score --
 # no real deployment-scale target is documented anywhere yet. Tune via env
 # var without a code change; revisit once a real target device count exists.
@@ -464,6 +466,11 @@ def _start_news_refresh():
     news.start_background_refresh(db, NEWS_REFRESH_SECONDS)
 
 
+@app.on_event("startup")
+def _start_weather_refresh():
+    weather.start_background_refresh(WEATHER_REFRESH_SECONDS)
+
+
 @app.get("/api/news")
 def news_items(limit: Annotated[int, Query(ge=1, le=200)] = 20):
     """Public, like /api/readings/* -- a read path must never be gated."""
@@ -481,3 +488,14 @@ def news_refresh(authorization: Annotated[Optional[str], Header()] = None):
     outbound requests to 5 external news sites through this server."""
     _auth(authorization)
     return {"inserted": news.refresh_news(db)}
+
+
+# ---------------------------------------------------------------- Weather
+
+@app.get("/api/weather")
+def weather_now():
+    """Public, like /api/health/-news -- a read path must never be gated.
+    Fixed to Blacksburg -- see weather.py for why. `location` is hardcoded
+    here (not derived from anything) so the frontend can label this honestly
+    without hardcoding the city name itself."""
+    return {"location": "Blacksburg, VA", **weather.current()}

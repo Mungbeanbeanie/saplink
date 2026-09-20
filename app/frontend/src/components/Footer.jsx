@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { css } from '../lib/css.js';
+import DashboardLink from './DashboardLink.jsx';
 
 // Shared site footer -- every page renders exactly one of these, so Mascot.jsx
 // can find it with a plain `document.querySelector('footer')` to avoid
@@ -24,7 +25,7 @@ export default function Footer() {
       <div className="flex flex-wrap" style={css('gap: 22px; font-size: 14px')}>
         {Overview}
         <Link to="/how-it-works" style={linkStyle}>How it works</Link>
-        <Link to="/dashboard" style={linkStyle}>Dashboard</Link>
+        <DashboardLink style={linkStyle}>Dashboard</DashboardLink>
         {Contact}
       </div>
       <span style={css('font-size: 13px; color: var(--color-neutral-500)')}>Field trials, not a finished product. © Saplink 2026</span>

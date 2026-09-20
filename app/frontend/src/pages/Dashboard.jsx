@@ -4,12 +4,14 @@ import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import Footer from '../components/Footer.jsx';
 import Mascot from '../components/Mascot.jsx';
+import MascotSpinner from '../components/MascotSpinner.jsx';
 import FadeWords from '../components/FadeWords.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
 import { useNetwork } from '../lib/network.js';
 import { useStatusHistory } from '../lib/statusHistory.js';
+import { useWeather } from '../lib/weather.js';
 
 // Site-map graph: every node is a real device from /api/network, laid out on
 // a fixed schematic grid -- there's no real per-router GPS/site-layout data
@@ -78,6 +80,7 @@ export default function Dashboard() {
   // tab list once /api/health answers.
   const [device, setDevice] = useState(() => searchParams.get('device') || 'sense-1');
   const statusHours = useStatusHistory(device);
+  const weather = useWeather();
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
@@ -329,6 +332,9 @@ export default function Dashboard() {
                 ))}
               </div>
               <div style={css('flex: 1; min-width: 0; height: 280px; border-radius: var(--radius-lg); background: var(--color-neutral-200); overflow: hidden')}>
+                {samples.length === 0 ? (
+                  <div style={css('height: 100%; display: flex; align-items: center; justify-content: center')}><MascotSpinner /></div>
+                ) : (
                 <svg viewBox="0 0 900 280" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
                   {v.gridLines.map((g) => (
                     <line key={g.value} x1="0" y1={g.y} x2="900" y2={g.y} stroke="#9a9081" strokeWidth={g.value === 0 ? 2 : 1} opacity={g.value === 0 ? 0.6 : 0.18} />
@@ -338,6 +344,7 @@ export default function Dashboard() {
                   <path d={v.linePath} fill="none" stroke="#56633f" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
                   <path d={v.spikePath} fill="none" stroke="#c67139" strokeWidth="3" strokeLinejoin="round" />
                 </svg>
+                )}
               </div>
             </div>
             <div style={css('display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--color-neutral-600); font-family: ui-monospace, monospace')}>
@@ -446,8 +453,12 @@ export default function Dashboard() {
                 <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{soilMv != null ? soilMv.toFixed(0) + ' mV' : '—'}</div>
                 <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Soil moisture (raw)</div>
               </div>
+              <div style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
+                <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{weather.ok && weather.temperature_f != null ? Math.round(weather.temperature_f) + '°F' : '—'}</div>
+                <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Outdoor temp (Blacksburg)</div>
+              </div>
             </div>
-            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>Air humidity, temperature and light aren't measured yet — no sensor for them exists in the hardware.</p>
+            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>Air humidity and light aren't measured yet — no sensor for either exists in the hardware. Temperature above is Blacksburg's current outdoor weather from a public feed, not a reading from the plant's own sensors.</p>
           </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>

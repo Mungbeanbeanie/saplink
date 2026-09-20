@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Logo from './Logo.jsx';
+import DashboardLink from './DashboardLink.jsx';
 import GoogleSignInButton from './GoogleSignInButton.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
@@ -25,8 +26,10 @@ export default function Header({ translucent = false }) {
         <Logo />Saplink
       </Link>
       <nav className="flex items-center" style={css('gap: clamp(14px, 2.5vw, 30px); font-size: 14px')}>
-        {LINKS.map(({ to, label }) => (
-          <Link
+        {LINKS.map(({ to, label }) => {
+          const NavLink = to === '/dashboard' ? DashboardLink : Link;
+          return (
+          <NavLink
             key={to}
             to={to}
             style={pathname === to
@@ -34,8 +37,9 @@ export default function Header({ translucent = false }) {
               : css('color: var(--color-neutral-800)')}
           >
             {label}
-          </Link>
-        ))}
+          </NavLink>
+          );
+        })}
         {signedIn ? (
           <Link to="/account" title={email} style={css('display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: var(--color-accent-2-600); color: var(--color-neutral-100); font-weight: 600; font-size: 14px; border: 2px solid var(--color-neutral-100); box-shadow: var(--shadow-sm)')}>
             {initials}
