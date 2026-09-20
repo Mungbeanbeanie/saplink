@@ -34,7 +34,7 @@ export default function Landing() {
             <span className="tag tag-accent-2" style={css('border-radius: 999px')}><FadeWords text="A Wi-Fi router for plants" /></span>
             <h1 style={css('margin: 0; font-size: clamp(42px, 6.4vw, 84px); line-height: 1.02; text-wrap: balance')}><FadeWords text="Saplink" delayOffset={80} /></h1>
             <p style={css('margin: 0; font-size: clamp(17px, 1.5vw, 20px); line-height: 1.6; color: var(--color-neutral-800); max-width: 56ch; text-wrap: pretty')}>
-              <FadeWords delayOffset={180} text="In an old forest the largest trees are the router, passing water, nutrients, and warnings to the seedlings around them. Logging takes those trees first, so Saplink rebuilds that router in hardware: it clips onto a living stem and puts the plant’s signals back on the network within seconds." />
+              <FadeWords delayOffset={180} text="In an old forest the largest trees are the router, passing water, nutrients, and warnings to the seedlings around them. Deforestation removes those trees first, so Saplink rebuilds that link in hardware: a router clips onto a living stem and puts the plant’s signals back on the network within seconds." />
             </p>
             <div className="flex flex-wrap gap-3 items-center" style={css('padding-top: 6px')}>
               <DashboardLink className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</DashboardLink>
@@ -45,7 +45,7 @@ export default function Landing() {
         <section id="who" style={css('position: relative; background: var(--color-accent-2-800); color: var(--color-neutral-100); padding: clamp(50px, 9vw, 96px) clamp(20px, 5vw, 64px)')}>
           <h2 style={css('margin: 0 0 10px; font-size: clamp(30px, 3.6vw, 46px); color: var(--color-neutral-100)')}><FadeWords text="How two plants connect" /></h2>
           <p style={css('margin: 0 0 36px; max-width: 52ch; color: var(--color-accent-2-200)')}>
-            <FadeWords delayOffset={100} text="Routers are spread across a site, each one reading the plants around it and relaying what it finds to the next. The diagram below simplifies that to two plants, and what one reports reaches the other in about a second." />
+            <FadeWords delayOffset={100} text="Routers are spread across a site, each one reading the plants around it and relaying what it finds to the next." />
           </p>
           <div
             style={css('border-radius: var(--radius-lg); background: color-mix(in srgb, #f9f4ed 8%, transparent); border: 1px solid color-mix(in srgb, #f9f4ed 20%, transparent); padding: clamp(14px, 2vw, 26px)')}
