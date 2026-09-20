@@ -87,6 +87,22 @@ const fmtHour = (epochSeconds) => new Date(epochSeconds * 1000).toLocaleString([
   month: 'short', day: 'numeric', hour: 'numeric',
 });
 
+// "Nice" tick step (the standard D3-style 1/2/5 x 10^n ladder) for a target
+// gridline count -- a fixed 10mV step looked fine at everyday scale, but
+// during an absurd spike the lo..hi range can balloon into the hundreds of
+// mV, and a fixed step then draws dozens of gridlines into the same 280px
+// of chart height, compressing the labels into an unreadable stack. Scaling
+// the step to the range keeps roughly the same number of gridlines (and so
+// legible spacing) whether the plant is calm or spiking.
+function niceStep(range, targetTicks) {
+  if (!(range > 0)) return 10;
+  const rawStep = range / targetTicks;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const residual = rawStep / magnitude;
+  const niceResidual = residual >= 5 ? 10 : residual >= 2 ? 5 : residual >= 1 ? 2 : 1;
+  return niceResidual * magnitude;
+}
+
 export default function Dashboard() {
   const { signedIn, token } = useAuth();
   const network = useNetwork();
@@ -196,9 +212,11 @@ export default function Dashboard() {
 
     const completeness = seqs.length ? Math.max(0, 100 - (dropped / (seqs.length + dropped)) * 100) : 100;
 
-    // Horizontal gridlines every 10 mV, snapped to the current lo/hi range --
-    // recomputed here each time that range changes, so they track live data.
-    const GRID_STEP = 10;
+    // Horizontal gridlines, snapped to the current lo/hi range -- recomputed
+    // here each time that range changes, so they track live data. The step
+    // itself autoscales (niceStep above) so a spike widening the range
+    // doesn't compress a fixed step into overlapping labels.
+    const GRID_STEP = niceStep(hi - lo, 6);
     const gridLines = [];
     for (let val = Math.ceil(lo / GRID_STEP) * GRID_STEP; val <= hi; val += GRID_STEP) {
       gridLines.push({ value: val, y: Y(val) });
