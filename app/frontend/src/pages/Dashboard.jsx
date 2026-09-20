@@ -6,7 +6,6 @@ import Copyright from '../components/Copyright.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
-import { roster } from '../data/roster.js';
 import { useNews } from '../lib/news.js';
 import { useNetwork } from '../lib/network.js';
 
@@ -55,11 +54,11 @@ function buildSiteGraph(density, realNodes) {
 }
 // mV that counts as "fully lit" -- a tuned display heuristic, not a
 // calibrated threshold; revisit against real VP amplitudes once more devices
-// report.
+// report. Canopy-cover has no real sensor at all, so unlike the old version
+// of this function there's no fabricated-number fallback here -- filler
+// (non-real) nodes just get a small fixed value so the map isn't empty.
 const FULL_GLOW_MV = 5;
 function siteCanopyFor(n) {
-  const r = roster.find((x) => x.id === n.id);
-  if (r) return r.canopy;
   return n.real ? 20 + Math.min(30, n.activity * 4) : 12;
 }
 
@@ -72,11 +71,6 @@ const fmtAgo = (ts) => {
   return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago';
 };
 
-// Air humidity/temperature/light have no sensor in the BOM and no backend
-// source (see plan.md's Phase 6 note) -- still hardcoded placeholders.
-// Soil moisture is real: wired to Contract A's soil_mv below.
-const WEATHER_CONDITIONS = [['68%', 'Air humidity'], ['14.2°C', 'Air temperature'], ['320 lux', 'Light level']];
-
 export default function Dashboard() {
   const { signedIn, token } = useAuth();
   const news = useNews(6);
@@ -84,11 +78,10 @@ export default function Dashboard() {
   const graph = useMemo(() => buildSiteGraph(network.density, network.nodes), [network.density, network.nodes]);
   const [searchParams] = useSearchParams();
   // Arriving from Account's "View" button (?device=sense-2) pre-selects that
-  // router's tab; an unknown/missing id just falls back to the default.
-  const [device, setDevice] = useState(() => {
-    const requested = searchParams.get('device');
-    return requested && roster.some((r) => r.id === requested) ? requested : 'sense-1';
-  });
+  // router's tab. There's no fixed device roster to validate against
+  // anymore -- an id that turns out not to be real just won't show up in the
+  // tab list once /api/health answers.
+  const [device, setDevice] = useState(() => searchParams.get('device') || 'sense-1');
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
@@ -176,8 +169,6 @@ export default function Dashboard() {
     let dropped = 0;
     for (let i = 1; i < seqs.length; i++) { const d = seqs[i] - seqs[i - 1]; if (d > 1) dropped += d - 1; }
 
-    const connected = roster.filter((n) => n.status === 'ok').length;
-    const siteCanopy = roster.reduce((sum, n) => sum + n.canopy, 0) / roster.length;
     const completeness = seqs.length ? Math.max(0, 100 - (dropped / (seqs.length + dropped)) * 100) : 100;
 
     // Horizontal gridlines every 10 mV, snapped to the current lo/hi range --
@@ -193,12 +184,17 @@ export default function Dashboard() {
       areaPath: s.length ? linePath + 'L' + W + ' ' + H + 'L0 ' + H + 'Z' : '',
       spikePath: spikeSeg.join(' '),
       baselineY: Y(baseline).toFixed(1),
-      seqs, dropped, connected, siteCanopy, completeness,
+      seqs, dropped, completeness,
       current: s.length ? s[s.length - 1].mv : null
     };
   }, [samples, baseline]);
 
-  const selected = roster.find((n) => n.id === device) || roster[0];
+  // Real devices only -- from /api/health, not a fixed fake fleet. Falls
+  // back to just the currently-selected id before the first health poll
+  // answers, so the tab bar is never empty.
+  const devices = health && health.devices && health.devices.length ? health.devices : [device];
+  const connected = health && health.devices ? health.devices.length : 0;
+  const deviceReporting = !!(health && health.devices && health.devices.includes(device));
   const spikeActive = !!spike && !acked;
   const isSim = src !== 'ads1115';
   const online = !!(health && health.ok);
@@ -243,18 +239,10 @@ export default function Dashboard() {
     );
   };
 
-  const tip = (text) => (
-    <span style={css('position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 40; white-space: nowrap; padding: 9px 14px; border-radius: var(--radius-lg); background: var(--color-neutral-900); color: var(--color-neutral-100); font-size: 13px; box-shadow: var(--shadow-md); pointer-events: none')}>{text}</span>
-  );
-
-  const statusBlocks = Array.from({ length: 48 }, (_, i) => {
-    const missing = i === 9 || i === 10 || i === 31;
-    const signal = i === 20 || i === 41;
-    return {
-      bg: missing ? 'var(--color-neutral-400)' : signal ? 'var(--color-accent-500)' : 'var(--color-accent-2-500)',
-      title: (47 - i) + 'h ago — ' + (missing ? 'no data' : signal ? 'signal sent' : 'steady')
-    };
-  });
+  // No backend endpoint returns per-hour history (only current health and raw
+  // recent samples) -- "Status over time" below shows that honestly instead
+  // of fabricating 48 hours of blocks, same "not live yet" pattern already
+  // used for Response relay further down.
 
   return (
     <div style={css('min-height: 100vh; background: var(--color-bg)')}>
@@ -272,40 +260,36 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-center gap-2.5">
             <span style={css('font-size: 13px; color: var(--color-neutral-600)')}>Router</span>
             <div className="seg" style={css('border-radius: 999px')}>
-              {roster.map((d) => (
-                <span key={d.id} style={css('position: relative; display: inline-flex')}>
-                  <button
-                    type="button" className="seg-opt"
-                    onClick={() => setDevice(d.id)}
-                    onMouseEnter={() => setHoverId('tab-' + d.id)}
-                    onMouseLeave={() => setHoverId(null)}
-                    style={{ borderRadius: 999, padding: '8px 18px', fontSize: 14, background: d.id === device ? 'var(--color-accent-2-700)' : 'transparent', color: d.id === device ? 'var(--color-neutral-100)' : 'var(--color-neutral-800)' }}
-                  >{d.id}</button>
-                  {hoverId === 'tab-' + d.id && tip(d.plant + ' · ' + d.site)}
-                </span>
+              {devices.map((id) => (
+                <button
+                  key={id}
+                  type="button" className="seg-opt"
+                  onClick={() => setDevice(id)}
+                  style={{ borderRadius: 999, padding: '8px 18px', fontSize: 14, background: id === device ? 'var(--color-accent-2-700)' : 'transparent', color: id === device ? 'var(--color-neutral-100)' : 'var(--color-neutral-800)' }}
+                >{id}</button>
               ))}
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-baseline gap-2.5" style={css('margin-top: -8px')}>
-          <span style={css('font-family: var(--font-heading); font-size: 20px')}>{selected.plant}</span>
-          <span style={css('font-size: 14px; color: var(--color-neutral-700)')}>{selected.site}</span>
+          <span style={css('font-family: var(--font-heading); font-size: 20px')}>{device}</span>
+          <span style={css('font-size: 14px; color: var(--color-neutral-700)')}>{deviceReporting ? 'Reporting' : 'No recent data'}</span>
         </div>
 
         <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px')}>
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 22px 24px; flex-direction: row; align-items: center; gap: 16px')}>
-            <span style={css('display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 999px; background: var(--color-accent-2-200); color: var(--color-accent-2-900); font-family: var(--font-heading); font-size: 19px; flex: none')}>{v.connected}/{roster.length}</span>
+            <span style={css('display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 999px; background: var(--color-accent-2-200); color: var(--color-accent-2-900); font-family: var(--font-heading); font-size: 19px; flex: none')}>{connected}</span>
             <div style={css('min-width: 0')}>
-              <div style={css('font-family: var(--font-heading); font-size: 22px; line-height: 1.15')}>{v.connected} of {roster.length} reporting</div>
-              <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 2px')}>Plants with a router</div>
+              <div style={css('font-family: var(--font-heading); font-size: 22px; line-height: 1.15')}>{connected} router{connected === 1 ? '' : 's'} reporting</div>
+              <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 2px')}>Live on the network right now</div>
             </div>
           </div>
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 22px 24px; flex-direction: row; align-items: center; gap: 16px')}>
             <span style={{ width: 14, height: 14, borderRadius: 999, flex: 'none', background: v.dropped > 6 || healthErr ? 'var(--color-accent-600)' : 'var(--color-accent-2-600)' }} />
             <div style={css('min-width: 0')}>
               <div style={css('font-family: var(--font-heading); font-size: 22px; line-height: 1.15')}>{healthErr ? 'Needs a look' : spikeActive ? 'New signal waiting' : 'Everything healthy'}</div>
-              <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 2px')}>{healthErr ? 'The system is not answering' : spikeActive ? 'One plant has something to report' : 'Every router on the network is reporting'}</div>
+              <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 2px')}>{healthErr ? 'The system is not answering' : spikeActive ? 'One plant has something to report' : 'The system is answering normally'}</div>
             </div>
           </div>
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 22px 24px; flex-direction: row; align-items: center; gap: 16px')}>
@@ -382,21 +366,9 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Status over time</h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>Each block is one hour of the last two days. Green means the plants were steady and every router reported in.</p>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>An hour-by-hour view of the last two days, once the backend keeps that history — today it only reports current status.</p>
               </div>
-              <div style={css('display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--color-neutral-700)')}>
-                <span className="inline-flex items-center gap-2"><span style={css('width: 11px; height: 11px; border-radius: 4px; background: var(--color-accent-2-500)')} />Steady</span>
-                <span className="inline-flex items-center gap-2"><span style={css('width: 11px; height: 11px; border-radius: 4px; background: var(--color-accent-500)')} />Signal sent</span>
-                <span className="inline-flex items-center gap-2"><span style={css('width: 11px; height: 11px; border-radius: 4px; background: var(--color-neutral-400)')} />No data</span>
-              </div>
-            </div>
-            <div className="flex" style={css('gap: 3px')}>
-              {statusBlocks.map((b, i) => (
-                <span key={i} title={b.title} style={{ flex: 1, height: 34, borderRadius: 5, background: b.bg }} />
-              ))}
-            </div>
-            <div style={css('display: flex; justify-content: space-between; font-size: 12px; color: var(--color-neutral-600); font-family: ui-monospace, monospace')}>
-              <span>48 hours ago</span><span>now</span>
+              <span className="tag tag-outline" style={css('border-radius: 999px')}>not live yet</span>
             </div>
           </div>
 
@@ -404,17 +376,7 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>The site</h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}>Where the routers sit, which ones are linked, and how much of the ground the canopy has taken back. Each patch is one router’s area — the wider and deeper the green, the more canopy has grown back there.</p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <div style={css('padding: 12px 20px; border-radius: var(--radius-lg); background: var(--color-accent-2-200)')}>
-                  <div style={css('font-family: var(--font-heading); font-size: 26px; color: var(--color-accent-2-900); line-height: 1.1')}>{v.siteCanopy.toFixed(0)}%</div>
-                  <div style={css('font-size: 12px; color: var(--color-accent-2-900)')}>canopy cover now</div>
-                </div>
-                <div style={css('padding: 12px 20px; border-radius: var(--radius-lg); background: var(--color-neutral-200)')}>
-                  <div style={css('font-family: var(--font-heading); font-size: 26px; line-height: 1.1')}>+{(v.siteCanopy - 20.8).toFixed(0)} pts</div>
-                  <div style={css('font-size: 12px; color: var(--color-neutral-700)')}>since replanting began</div>
-                </div>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}>Where the routers sit and how active each one is right now. Solid nodes are real routers reporting activity; faint ones are unconfirmed, filled in only to suggest the density of a real site.</p>
               </div>
             </div>
             <div style={css('position: relative; border-radius: var(--radius-lg); background: var(--color-neutral-200)')}>
@@ -479,13 +441,8 @@ export default function Dashboard() {
                 <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{soilMv != null ? soilMv.toFixed(0) + ' mV' : '—'}</div>
                 <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Soil moisture (raw)</div>
               </div>
-              {WEATHER_CONDITIONS.map(([value, label]) => (
-                <div key={label} style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
-                  <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{value}</div>
-                  <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>{label}</div>
-                </div>
-              ))}
             </div>
+            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>Air humidity, temperature and light aren't measured yet — no sensor for them exists in the hardware.</p>
           </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 14px')}>
@@ -509,23 +466,30 @@ export default function Dashboard() {
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Network traffic</h2>
-              <span className="tag tag-neutral" style={css('border-radius: 999px')}>{(v.connected * 1.2).toFixed(1)} kB/min</span>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Router activity</h2>
+              <span className="tag tag-neutral" style={css('border-radius: 999px')}>{network.nodes.length} reporting</span>
             </div>
-            <p className="card-body" style={css('margin: 0; font-size: 14px')}>How much data each router is sending. A flat bar means a router has dropped off the network.</p>
-            <div className="flex flex-col gap-3">
-              {roster.map((n, i) => (
-                <div key={'tr' + n.id} className="flex flex-col gap-1.5">
-                  <div style={css('display: flex; justify-content: space-between; font-size: 13px')}>
-                    <span title={n.plant + ' · ' + n.site} style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-800)')}>{n.id}</span>
-                    <span style={css('color: var(--color-neutral-700)')}>{n.status === 'ok' ? (1.4 - i * 0.2).toFixed(1) + ' kB/min' : 'silent'}</span>
-                  </div>
-                  <div style={css('height: 10px; border-radius: 999px; background: var(--color-neutral-200); overflow: hidden')}>
-                    <div style={{ height: '100%', width: n.status === 'ok' ? (88 - i * 16) + '%' : '3%', borderRadius: 999, background: n.status === 'ok' ? 'var(--color-accent-2-600)' : 'var(--color-accent-600)' }} />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="card-body" style={css('margin: 0; font-size: 14px')}>Each router's current electrical activity, in millivolts. A flat bar means a router has dropped off the network.</p>
+            {network.nodes.length ? (
+              <div className="flex flex-col gap-3">
+                {network.nodes.map((n) => {
+                  const pct = Math.min(100, (n.activity / FULL_GLOW_MV) * 100);
+                  return (
+                    <div key={'tr' + n.device} className="flex flex-col gap-1.5">
+                      <div style={css('display: flex; justify-content: space-between; font-size: 13px')}>
+                        <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-800)')}>{n.device}</span>
+                        <span style={css('color: var(--color-neutral-700)')}>{n.activity.toFixed(1)} mV</span>
+                      </div>
+                      <div style={css('height: 10px; border-radius: 999px; background: var(--color-neutral-200); overflow: hidden')}>
+                        <div style={{ height: '100%', width: pct.toFixed(0) + '%', borderRadius: 999, background: pct > 15 ? 'var(--color-accent-2-600)' : 'var(--color-accent-600)' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="card-body" style={css('margin: 0; font-size: 14px; color: var(--color-neutral-600)')}>No routers reporting yet.</p>
+            )}
           </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px')}>
@@ -555,7 +519,7 @@ export default function Dashboard() {
               <span style={css('color: var(--color-neutral-700)')}>Last reading</span>
               <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-900)')}>{ago}</span>
               <span style={css('color: var(--color-neutral-700)')}>Routers reporting</span>
-              <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-900)')}>{health && health.devices ? health.devices.join(', ') : roster.map((n) => n.id).join(', ')}</span>
+              <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-900)')}>{health && health.devices && health.devices.length ? health.devices.join(', ') : '—'}</span>
               <span style={css('color: var(--color-neutral-700)')}>Checked</span>
               <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-700)')}>every 10s</span>
             </div>

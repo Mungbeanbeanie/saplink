@@ -53,6 +53,7 @@ local dev simulator answer the same shape:
 `GET /api/readings/latest` → `{ last_id, sample }`
 `GET /api/readings/history?since_id=` → `{ last_id, samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src, soil_mv, seq }] }`
 `GET /api/news?limit=` → `{ items: [{ id, source, title, link, summary, published_ts }] }` (real backend only, no dev-simulator fake — read-only and public either way)
+`GET /api/network` → `{ density, nodes: [{ device, activity }] }` — real per-device activity driving the dashboard's site map and router-activity list
 `GET /api/auth/me` (with `Authorization: Bearer <google id token>`) → `{ email }`
 
 `t_ms` is the router's own `millis()` clock, not wall-clock time — the dashboard stamps
@@ -75,8 +76,7 @@ src/pages/               Landing, HowItWorks, Dashboard, Account
 src/components/          Header, Logo, GoogleMark, Copyright, Mascot, IntroLoader
 src/scene/                Procedural branch/foliage scene behind the hero
 src/art/                  Static SVG artwork (two-plant diagram, regrowing forest)
-src/data/roster.js        The router roster — one source for map, tabs, traffic, account
-src/lib/                  css() style helper, auth, health polling, apiFetch()
+src/lib/                  css() style helper, auth, health/network/news polling, apiFetch()
 public/organic.css        Design tokens and component classes
 public/media/             Intro loader clip (webm/mp4) + poster
 ```
@@ -89,12 +89,17 @@ Loader/mascot keyframes and one-off component rules live in `src/index.css`.
 ## Notes
 
 Sign-in (`src/lib/auth.js`) is real Google Identity Services, verified server-side
-against `GET /api/auth/me` — no ID token is trusted client-side. Soil moisture in the
+against `GET /api/auth/me` — no ID token is trusted client-side. There's no fixed/fake
+device roster anywhere in this app anymore — the dashboard's router tabs, Account's
+router list, the site map, and "Router activity" are all driven live from
+`GET /api/health` and `GET /api/network`; a router that stops reporting just stops
+appearing, rather than showing a stale or invented status for it. Soil moisture in the
 dashboard's Conditions card is real (Contract A's `soil_mv`, raw ADC mV, not a
-calibrated percentage). Air humidity/temperature/light in that same card, canopy
-figures and traffic rates are still placeholders — no sensor exists for the first three,
-and a weather API would need real per-router lat/lon that `src/data/roster.js` doesn't
-have yet (see `.claude/plan.md`'s Phase 6 note).
+calibrated percentage). Air humidity/temperature/light in that same card are openly
+labelled as not measured yet — no sensor exists for any of the three (see
+`.claude/plan.md`'s Phase 6 note). "Status over time" and canopy-cover figures were
+removed rather than backed by fabricated numbers, since neither has a real data source
+yet; both are marked "not live yet" the same way Response relay already was.
 
 `Mascot` (bottom-right, cursor-tracking) and `IntroLoader` (session-once splash clip,
 skips itself for `prefers-reduced-motion`) are mounted once in `main.jsx` so they persist
