@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNews } from '../lib/news.js';
 
 // The Saplink mascot: a sprouting seed, sitting bottom-right of each page.
 // Artwork inlined verbatim from media/saplink-mascot/saplink-mascot.svg (idle,
@@ -14,11 +15,24 @@ import React, { useEffect, useRef } from 'react';
 // scroll-listener guess. Its eyes track the cursor everywhere on the page; it
 // only smiles while the cursor is actually hovering it (plain CSS :hover --
 // see index.css), and it blinks on an irregular timer.
+//
+// On hover it also picks a random real article from /api/news (the same
+// feed that used to live in a Dashboard-only card -- moved here so it's
+// sitewide) and "says" it in a speech bubble, typed out letter by letter,
+// opening with "Check this article out:" every time. The mouth
+// (index.css's .m-mouth, nested in the happy face) flaps open and closed
+// for the duration of the typing via the `.is-talking` class, then settles
+// back into the plain smile once the line's fully typed.
 export default function Mascot() {
   const svgRef = useRef(null);
   const faceRef = useRef(null);
   const eyesRef = useRef(null);
   const blinkRef = useRef(null);
+  const news = useNews(20);
+  const lastArticleRef = useRef(null);
+  const [article, setArticle] = useState(null);
+  const [revealed, setRevealed] = useState('');
+  const [talking, setTalking] = useState(false);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -92,9 +106,52 @@ export default function Mascot() {
     };
   }, []);
 
+  // Types the current article's line out letter by letter and flaps the
+  // mouth for exactly that long. Runs fresh whenever `article` changes (a
+  // new hover picks a new one); the cleanup below is what stops an
+  // in-flight typing if the mouse leaves (article -> null) or a fresh
+  // hover swaps the article before the previous line finished.
+  useEffect(() => {
+    if (!article) { setRevealed(''); setTalking(false); return undefined; }
+    const full = article.isFallback ? article.title : 'Check this article out: ' + article.title;
+    const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) { setRevealed(full); setTalking(false); return undefined; }
+    setTalking(true);
+    let i = 0;
+    const id = setInterval(() => {
+      i++;
+      setRevealed(full.slice(0, i));
+      if (i >= full.length) { clearInterval(id); setTalking(false); }
+    }, 26);
+    return () => clearInterval(id);
+  }, [article]);
+
+  // A different real article each hover. If the news feed hasn't answered
+  // yet (still loading, or briefly unreachable), the bubble still opens
+  // with a fallback line instead of silently doing nothing on hover --
+  // avoids repeating the article that was just shown when there's more
+  // than one to choose from.
+  const handleMouseEnter = () => {
+    if (!news.length) { setArticle({ title: "Still fetching the news feed — check back in a moment.", isFallback: true }); return; }
+    let next = news[Math.floor(Math.random() * news.length)];
+    if (news.length > 1) {
+      while (next === lastArticleRef.current) next = news[Math.floor(Math.random() * news.length)];
+    }
+    lastArticleRef.current = next;
+    setArticle(next);
+  };
+  const handleMouseLeave = () => setArticle(null);
+
   return (
-    <div className="mascot" aria-hidden="true">
-      <svg ref={svgRef} viewBox="200 140 320 420" width="78" height="102">
+    <div className={'mascot' + (talking ? ' is-talking' : '')} aria-hidden="true">
+      <div className="mascot-stage">
+        {article && (
+          article.link
+            ? <a className="mascot-bubble" href={article.link} target="_blank" rel="noreferrer">{revealed}{talking && <span className="mascot-caret" />}</a>
+            : <div className="mascot-bubble">{revealed}{talking && <span className="mascot-caret" />}</div>
+        )}
+        <svg ref={svgRef} viewBox="200 140 320 420" width="78" height="102"
+          onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
         <ellipse className="m-shadow" cx="360" cy="541" rx="121" ry="11" fill="#e3d6c6" />
         <g className="m-body-g">
           {/* legs */}
@@ -122,11 +179,20 @@ export default function Mascot() {
             </g>
             <g className="m-face-happy" stroke="#4a2e1c" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="none">
               <path d="M306 372 Q324 344 342 372" /><path d="M381 372 Q399 344 417 372" />
-              <path d="M338 410 Q361 436 384 410" />
+              {/* Resting mouth is the plain smile curve; while talking it's
+                  swapped out (see index.css's .is-talking rules) for a
+                  two-frame toggle between a short flat line and a small
+                  dark circle, alternating to read as an open/closed mouth. */}
+              <g className="m-mouth">
+                <path className="m-mouth-smile" d="M338 410 Q361 436 384 410" />
+                <line className="m-mouth-line" x1="347" y1="413" x2="375" y2="413" strokeWidth="9" />
+                <circle className="m-mouth-circle" cx="361" cy="417" r="8" fill="#4a2e1c" stroke="none" />
+              </g>
             </g>
           </g>
         </g>
-      </svg>
+        </svg>
+      </div>
     </div>
   );
 }

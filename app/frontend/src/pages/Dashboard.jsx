@@ -8,7 +8,6 @@ import FadeWords from '../components/FadeWords.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
-import { useNews } from '../lib/news.js';
 import { useNetwork } from '../lib/network.js';
 import { useStatusHistory } from '../lib/statusHistory.js';
 
@@ -70,7 +69,6 @@ const fmtHour = (epochSeconds) => new Date(epochSeconds * 1000).toLocaleString([
 
 export default function Dashboard() {
   const { signedIn, token } = useAuth();
-  const news = useNews(6);
   const network = useNetwork();
   const graph = useMemo(() => buildSiteGraph(network.nodes), [network.nodes]);
   const [searchParams] = useSearchParams();
@@ -450,25 +448,6 @@ export default function Dashboard() {
               </div>
             </div>
             <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>Air humidity, temperature and light aren't measured yet — no sensor for them exists in the hardware.</p>
-          </div>
-
-          <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 14px')}>
-            <div>
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Ecology news" /></h2>
-              <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="Wider context from outside the network, refreshed from real ecology/environment sources." /></p>
-            </div>
-            {news.length ? (
-              <ul style={css('display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none')}>
-                {news.map((n) => (
-                  <li key={n.id} style={css('display: flex; flex-direction: column; gap: 2px')}>
-                    <a href={n.link} target="_blank" rel="noreferrer" style={css('font-size: 14px; font-weight: 600; color: var(--color-neutral-900); text-decoration: none')}>{n.title}</a>
-                    <span style={css('font-size: 12px; color: var(--color-neutral-600)')}>{n.source} · {fmtAgo(n.published_ts)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="card-body" style={css('margin: 0; font-size: 14px; color: var(--color-neutral-600)')}>No news fetched yet.</p>
-            )}
           </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
