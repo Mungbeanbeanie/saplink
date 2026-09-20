@@ -49,6 +49,15 @@ export function renderGoogleButton(el, opts) {
   window.google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', ...opts });
 }
 
+// Opens Google's own sign-in UI (the One Tap prompt) without needing a click
+// on GIS's own rendered button -- for CTAs elsewhere (e.g. Landing's "Open
+// the dashboard") that should gate on sign-in first. No-ops gracefully, same
+// as the rest of this file, if GIS isn't configured/loaded yet.
+export function promptSignIn() {
+  if (!ready) return;
+  window.google.accounts.id.prompt();
+}
+
 function signOutAuth() {
   credential = null;
   email = null;

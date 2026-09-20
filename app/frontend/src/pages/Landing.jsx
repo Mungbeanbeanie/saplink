@@ -1,17 +1,47 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
-import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import BranchScene from '../scene/BranchScene.jsx';
 import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
 import { useHealth } from '../lib/useHealth.js';
+import { useAuth, isConfigured, promptSignIn } from '../lib/auth.js';
 
 const STEPS = [
   ['01', 'One plant sends', 'Its router picks up a change in the plant’s electrical activity — water, light, a wound, anything it responds to.', 'sage'],
   ['02', 'Saplink carries it', 'The signal is passed over Wi-Fi, checked against that plant’s resting level, and logged.', 'accent'],
   ['03', 'The neighbour hears it', 'The neighbouring plant’s router delivers the signal, so it knows what is happening next door.', 'sage']
 ];
+
+const CTA_STYLE = css('border-radius: 999px; padding: 13px 26px; font-size: 16px');
+
+// "Open the dashboard": signed-in visitors go straight there; signed-out
+// visitors are asked to sign in with Google first, then land on the
+// dashboard once that completes.
+function DashboardCta() {
+  const { signedIn } = useAuth();
+  const navigate = useNavigate();
+  const [wantsDashboard, setWantsDashboard] = React.useState(false);
+
+  React.useEffect(() => {
+    if (wantsDashboard && signedIn) navigate('/dashboard');
+  }, [wantsDashboard, signedIn, navigate]);
+
+  if (signedIn) {
+    return <Link to="/dashboard" className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</Link>;
+  }
+  return (
+    <button
+      type="button"
+      className="btn btn-primary"
+      style={CTA_STYLE}
+      title={isConfigured() ? undefined : 'Google sign-in needs VITE_GOOGLE_CLIENT_ID set -- see .env.example'}
+      onClick={() => { setWantsDashboard(true); promptSignIn(); }}
+    >
+      Open the dashboard
+    </button>
+  );
+}
 
 export default function Landing() {
   const { health, error } = useHealth(15000);
@@ -38,8 +68,7 @@ export default function Landing() {
               Saplink is a router for plants. One clips onto a living stem, picks up the electrical signals the plant sends as its conditions change — more water, more light, a wound, a dry spell — and puts them on the network, so nearby plants and you both get the message within seconds.
             </p>
             <div className="flex flex-wrap gap-3 items-center" style={css('padding-top: 6px')}>
-              <Link to="/dashboard" className="btn btn-primary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>Open the dashboard</Link>
-              <GoogleSignInButton size="large" shape="pill" />
+              <DashboardCta />
             </div>
             <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; padding: 12px 20px; border-radius: 999px; background: var(--color-neutral-100); border: 1px solid var(--color-neutral-300); box-shadow: var(--shadow-sm); font-size: 13px; color: var(--color-neutral-700)')}>
               <span style={css('display: inline-flex; align-items: center; gap: 9px; font-weight: 600; color: var(--color-neutral-900)')}>
@@ -98,8 +127,7 @@ export default function Landing() {
             <h2 style={css('margin: 0; font-size: clamp(32px, 4.4vw, 56px); line-height: 1.05')}>Put a router on your first plant.</h2>
             <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 46ch')}>The readings are open to everyone. Sign in with Google to acknowledge signals and send a test signal across the plant network.</p>
             <div className="flex flex-wrap gap-3 items-center">
-              <Link to="/dashboard" className="btn btn-primary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>Open the dashboard</Link>
-              <GoogleSignInButton size="large" shape="pill" />
+              <DashboardCta />
             </div>
             <form onSubmit={(e) => { e.preventDefault(); setSent(true); }} style={css('display: flex; flex-wrap: wrap; gap: 10px; width: 100%; max-width: 520px')}>
               <input className="input" type="email" required placeholder="you@example.com" style={css('flex: 1 1 240px; border-radius: 999px; padding: 13px 20px')} />

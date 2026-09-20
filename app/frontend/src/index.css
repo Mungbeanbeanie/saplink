@@ -15,16 +15,17 @@ a:hover { color: var(--color-accent-800); }
 @keyframes flow { to { stroke-dashoffset: -44; } }
 @keyframes pulseDot { from { opacity: 1; transform: scale(1); } to { opacity: .35; transform: scale(.82); } }
 
-/* Intro loader */
-.loader { position: fixed; inset: 0; z-index: 1000; background: #f0f5ed; overflow: hidden; transition: opacity .7s ease; }
+/* Intro loader: the growing-branch scene (src/components/IntroLoader.jsx). */
+.loader { position: fixed; inset: 0; z-index: 1000; background: #F1E5D6; overflow: hidden; transition: opacity .7s ease; }
 .loader.is-leaving { opacity: 0; pointer-events: none; }
-.loader-video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .loader-skip { position: absolute; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 html.is-loading, html.is-loading body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .loader { display: none; } }
+@keyframes sl-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.055); } }
+@keyframes sl-dots { 0% { opacity: .25; } 50% { opacity: 1; } 100% { opacity: .25; } }
 
-/* Mascot: a leaf on stick limbs, fixed bottom right. Eyes track the cursor,
-   the free arm waves on an irregular timer. */
+/* Mascot: a seed on stick limbs with a sprout on its head, fixed bottom
+   right. Eyes track the cursor, the free arm waves on an irregular timer. */
 .mascot {
   position: fixed; right: max(16px, env(safe-area-inset-right, 0px));
   bottom: max(16px, env(safe-area-inset-bottom, 0px)); z-index: 45;
@@ -34,7 +35,7 @@ html.is-loading, html.is-loading body { overflow: hidden; }
 .mascot svg { display: block; transform-box: fill-box; transform-origin: 50% 100%; animation: mascotSway 5s ease-in-out infinite alternate; }
 .mascot-face { transform-box: fill-box; transform-origin: 50% 50%; transition: transform 0.12s ease-out; }
 .mascot-pupil { transform-box: fill-box; transform-origin: center; transition: transform 0.07s ease-out; }
-.mascot-arm-r { transform-box: view-box; transform-origin: 80px 55px; }
+.mascot-arm-r { transform-box: view-box; transform-origin: 82px 60px; }
 .mascot-arm-r.is-waving { animation: mascotWave 1.15s ease-in-out; }
 @keyframes mascotSway { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
 @keyframes mascotWave {
@@ -51,4 +52,4 @@ html.is-loading, html.is-loading body { overflow: hidden; }
   .mascot-face, .mascot-pupil { transition: none; }
   .mascot-arm-r.is-waving { animation: none; }
 }
-@media (max-width: 520px) { .mascot svg { width: 60px; height: 79px; } }
+@media (max-width: 520px) { .mascot svg { width: 60px; height: 78px; } }
