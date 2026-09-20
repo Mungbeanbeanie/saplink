@@ -309,21 +309,26 @@ export default function Dashboard() {
 
         <div style={css('display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 22px; align-items: stretch')}>
 
-          <div className="card elev-md" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px clamp(18px, 2.5vw, 30px)')}>
-            <div className="flex flex-wrap items-center justify-between gap-3.5" style={css('margin-bottom: 20px')}>
+          <div className="card elev-md" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px clamp(18px, 2.5vw, 30px); position: relative')}>
+            <div className="flex flex-wrap items-start justify-between gap-3.5" style={css('margin-bottom: 20px; padding-top: 32px')}>
               <div>
                 <h2 className="card-title" style={css('margin: 0; font-size: 26px')}><FadeWords text="Electrical activity" /></h2>
                 <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="The green line is the plant’s signal strength in millivolts. The dashed line is its normal resting level — movement away from it means conditions around the plant have changed." /></p>
               </div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="tag" style={{ borderRadius: 999, background: isSim ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)', color: isSim ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)' }}>{isSim ? 'Simulated data — no plant connected' : 'Live plant — real sensor'}</span>
-                <span className="tag tag-neutral" style={css('border-radius: 999px')}>resting level {baseline.toFixed(1)} mV</span>
-                <span className="tag tag-neutral" style={css('border-radius: 999px')}>right now {v.current == null ? '—' : v.current.toFixed(1)} mV</span>
+              <div className="flex flex-col items-end gap-2.5">
+                <div className="flex items-center gap-2.5" style={css('position: absolute; top: 22px; right: 18px')}>
+                <span style={css('font-size: 15px; font-weight: 700; color: var(--color-neutral-900)')}>Download as</span>
                 <select value={exportKind} onChange={(e) => setExportKind(e.target.value)} aria-label="Download format" style={css('border-radius: 999px; padding: 7px 12px; font-size: 13px; border: 1px solid var(--color-neutral-300); background: var(--color-neutral-100)')}>
                   <option value="csv">CSV</option>
                   <option value="json">JSON</option>
                 </select>
-                <button type="button" onClick={() => download(exportKind)} disabled={!samples.length} className="btn btn-secondary" title="Downloads the readings on screen right now" style={css('border-radius: 999px; padding: 7px 16px; font-size: 13px')}>Download</button>
+                <button type="button" onClick={() => download(exportKind)} disabled={!samples.length} className="btn btn-primary" title="Downloads the readings on screen right now" style={css('border-radius: 999px; padding: 8px 18px; font-size: 13px; font-weight: 500')}>Download</button>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2.5">
+                <span className="tag" style={{ borderRadius: 999, background: isSim ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)', color: isSim ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)' }}>{isSim ? 'Simulated data — no plant connected' : 'Live plant — real sensor'}</span>
+                <span className="tag tag-neutral" style={css('border-radius: 999px')}>resting level {baseline.toFixed(1)} mV</span>
+                <span className="tag tag-neutral" style={css('border-radius: 999px')}>right now {v.current == null ? '—' : v.current.toFixed(1)} mV</span>
+                </div>
               </div>
             </div>
             <div className="flex gap-3.5" style={css('position: relative')}>
