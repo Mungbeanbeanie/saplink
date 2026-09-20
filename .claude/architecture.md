@@ -64,12 +64,13 @@ index.html               --> src/main.jsx (Vite entry)
 src/main.jsx             --> react-router-dom, src/pages/*.jsx, src/components/{Mascot,IntroLoader}.jsx
 
 src/lib/api.js            (leaf — API_BASE from VITE_API_BASE_URL, apiFetch(path,opts))
+src/lib/sessionCache.js   (leaf — sessionStorage readCache/writeCache wrapper; each polling hook below seeds its initial state from the last-seen cached value so a reload paints instantly instead of empty/null while the poll re-validates)
 src/lib/auth.js          --> src/lib/api.js   (real Google Identity Services; module-level singleton + useAuth() via useSyncExternalStore, since GIS's callback fires outside React's render cycle)
 src/lib/news.js          --> src/lib/api.js   (useNews(limit) hook, polls GET /api/news)
-src/lib/network.js       --> src/lib/api.js   (useNetwork() hook, polls GET /api/network -- density + per-device activity for the site-map graph)
-src/lib/statusHistory.js --> src/lib/api.js   (useStatusHistory(device,hours) hook, polls GET /api/status_history -- hour-bucketed batch/event counts for the "Status over time" strip)
-src/lib/weather.js       --> src/lib/api.js   (useWeather() hook, polls GET /api/weather -- Blacksburg's current outdoor temperature, fixed location)
-src/lib/useHealth.js     --> src/lib/api.js   (GET /api/health polling hook)
+src/lib/network.js       --> src/lib/api.js, src/lib/sessionCache.js   (useNetwork() hook, polls GET /api/network -- density + per-device activity for the site-map graph)
+src/lib/statusHistory.js --> src/lib/api.js, src/lib/sessionCache.js   (useStatusHistory(device,hours) hook, polls GET /api/status_history -- hour-bucketed batch/event counts for the "Status over time" strip)
+src/lib/weather.js       --> src/lib/api.js, src/lib/sessionCache.js   (useWeather() hook, polls GET /api/weather -- Blacksburg's current outdoor temperature, fixed location)
+src/lib/useHealth.js     --> src/lib/api.js, src/lib/sessionCache.js   (GET /api/health polling hook)
 src/lib/css.js            (leaf — CSS-declaration-string -> React style object helper)
 src/data/roster.js         (leaf — the 5-plant fixture: dashboard map/tabs, account's router list; not reconciled with /api/health's real `devices`)
 

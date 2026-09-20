@@ -12,6 +12,7 @@ import { apiFetch } from '../lib/api.js';
 import { useNetwork } from '../lib/network.js';
 import { useStatusHistory } from '../lib/statusHistory.js';
 import { useWeather } from '../lib/weather.js';
+import { readCache, writeCache } from '../lib/sessionCache.js';
 
 // Site-map graph: every node is a real device from /api/network, laid out on
 // a fixed schematic grid -- there's no real per-router GPS/site-layout data
@@ -199,7 +200,7 @@ export default function Dashboard() {
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
   const [live, setLive] = useState(false);
-  const [health, setHealth] = useState(null);
+  const [health, setHealth] = useState(() => readCache('saplink.cache.dashboardHealth', null));
   const [healthErr, setHealthErr] = useState(false);
   const [spike, setSpike] = useState(null);
   const [acked, setAcked] = useState(false);
@@ -216,7 +217,18 @@ export default function Dashboard() {
   // since they're otherwise stale state from the previous tab.
   useEffect(() => {
     lastId.current = 0;
-    setSamples([]);
+    // Seeded from the last-seen cache for THIS device, not blanked to [] --
+    // avoids showing another router's chart on a tab switch while still
+    // painting instantly instead of an empty spinner. since_id always
+    // resets to 0 above regardless (not cached/resumed -- see
+    // sessionCache.js's caller notes: resuming a stale id could silently
+    // stall the chart if the server's row ids ever reset).
+    const readingsCacheKey = 'saplink.cache.readings.' + device;
+    const cachedReadings = readCache(readingsCacheKey, null);
+    setSamples(cachedReadings ? cachedReadings.samples || [] : []);
+    setBaseline(cachedReadings ? cachedReadings.baseline : 42);
+    setSrc(cachedReadings ? cachedReadings.src : 'sim');
+    setLive(cachedReadings ? cachedReadings.live : false);
     // The wire shape is the real backend's (app/backend/main.py): { last_id,
     // samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src,
     // soil_mv, seq }] }. t_ms is the router's millis() clock, not a wall-clock
@@ -228,11 +240,17 @@ export default function Dashboard() {
       if (d.last_id != null) lastId.current = d.last_id;
       const last = rows[rows.length - 1];
       const now = Date.now();
+      const baseline = last.baseline_mv != null ? last.baseline_mv : 42;
+      const src = last.src || 'sim';
       setLive(true);
-      setBaseline(last.baseline_mv != null ? last.baseline_mv : 42);
-      setSrc(last.src || 'sim');
+      setBaseline(baseline);
+      setSrc(src);
       if (last.event === 'spike') setSpike({ mv: last.mv, threshold: undefined, t: now });
-      setSamples((prev) => prev.concat(rows.map((r) => ({ t: now, mv: r.mv, event: r.event, seq: r.seq }))).slice(-180));
+      setSamples((prev) => {
+        const next = prev.concat(rows.map((r) => ({ t: now, mv: r.mv, event: r.event, seq: r.seq }))).slice(-180);
+        writeCache(readingsCacheKey, { samples: next, baseline, src, live: true });
+        return next;
+      });
     };
 
     const mock = () => setSamples((prev) => {
@@ -262,7 +280,7 @@ export default function Dashboard() {
   useEffect(() => {
     const poll = () => apiFetch('/api/health')
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((h) => { setHealth(h); setHealthErr(false); }, () => setHealthErr(true));
+      .then((h) => { setHealth(h); setHealthErr(false); writeCache('saplink.cache.dashboardHealth', h); }, () => setHealthErr(true));
     poll();
     const t = setInterval(poll, 10000);
     return () => clearInterval(t);
