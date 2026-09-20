@@ -38,6 +38,10 @@ WEB_ORIGINS = [o for o in os.environ.get("SAPLINK_WEB_ORIGIN", "").split(",") if
 # 30 min default; tests/CI set this to 0 so `python test_ingest.py` never makes
 # real outbound HTTP calls to the news feeds.
 NEWS_REFRESH_SECONDS = int(os.environ.get("NEWS_REFRESH_SECONDS", "1800"))
+# ARBITRARY starting heuristic for the dashboard's site-map density score --
+# no real deployment-scale target is documented anywhere yet. Tune via env
+# var without a code change; revisit once a real target device count exists.
+NETWORK_TARGET_DEVICES = int(os.environ.get("NETWORK_TARGET_DEVICES", "8"))
 
 # Browser identity, entirely separate from TOKEN above -- see _google_user().
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -333,6 +337,33 @@ def health():
     n, last_recv = db.execute("SELECT COUNT(*), MAX(recv_ts) FROM batch").fetchone()
     devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
     return {"ok": True, "batches": n, "last_recv": last_recv, "devices": devices}
+
+
+@app.get("/api/network")
+def network():
+    """Per-device recent activity + an overall density score, for the
+    dashboard's site map. Public, like /api/health -- a read path must never
+    be gated. The map does NOT render one node per real device (see
+    NETWORK_TARGET_DEVICES above and plan.md's Phase 6 note) -- this just
+    hands the frontend real numbers to size and light that graph with."""
+    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
+    nodes = []
+    for d in devices:
+        row = db.execute(
+            "SELECT recv_ts, mv FROM batch WHERE device=? ORDER BY id DESC LIMIT 1",
+            (d,),
+        ).fetchone()
+        if row is None:
+            continue
+        recv_ts, mv_json = row
+        # mv[] is already baseline-subtracted deviation (firmware's
+        # cond.deviation()), so the largest magnitude in the latest batch is
+        # directly "how far from resting, right now" -- no extra math needed.
+        mv = json.loads(mv_json)
+        activity = max((abs(v) for v in mv), default=0.0)
+        nodes.append({"device": d, "last_recv": recv_ts, "activity": round(activity, 3)})
+    density = min(1.0, len(devices) / NETWORK_TARGET_DEVICES)
+    return {"density": density, "nodes": nodes}
 
 
 # ------------------------------------------------------------- Ecology news

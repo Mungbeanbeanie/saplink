@@ -5,8 +5,62 @@ import Copyright from '../components/Copyright.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
-import { roster, nodeLinks } from '../data/roster.js';
+import { roster } from '../data/roster.js';
 import { useNews } from '../lib/news.js';
+import { useNetwork } from '../lib/network.js';
+
+// Site-map graph: SIZE is proportional to the backend's density score, not
+// 1:1 with real probes -- a real forest would need far more nodes/links than
+// are useful to render. Real devices (from /api/network) fill the first slots
+// with a real label/activity; the rest are unlabeled filler representing
+// assumed density, never presented as real sensors.
+const MIN_NODES = 4, MAX_NODES = 14;
+
+function seededRng(seed) {
+  let x = seed;
+  return () => { x = (x * 1664525 + 1013904223) % 4294967296; return x / 4294967296; };
+}
+// Fixed seed, generated once up to MAX_NODES: slicing to a smaller count
+// keeps every earlier node's position stable as density rises or falls,
+// instead of the whole layout jumping around between polls.
+const SITE_POSITIONS = (() => {
+  const rand = seededRng(1337);
+  return Array.from({ length: MAX_NODES }, () => ({ x: 40 + rand() * 520, y: 30 + rand() * 240 }));
+})();
+
+function buildSiteGraph(density, realNodes) {
+  const count = Math.max(MIN_NODES, Math.round(MIN_NODES + density * (MAX_NODES - MIN_NODES)));
+  const nodes = SITE_POSITIONS.slice(0, count).map((p, i) => {
+    const real = realNodes[i];
+    return real
+      ? { ...p, id: real.device, real: true, activity: real.activity || 0 }
+      : { ...p, id: 'filler-' + i, real: false, activity: 0 };
+  });
+  // Nearest-2-neighbor proximity graph, not the old hardcoded pairs -- works
+  // for any node count. O(n^2) is fine at this scale (<=14 nodes).
+  const links = [];
+  const seen = new Set();
+  nodes.forEach((n, i) => {
+    nodes
+      .map((m, j) => ({ j, d: i === j ? Infinity : Math.hypot(n.x - m.x, n.y - m.y) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 2)
+      .forEach(({ j }) => {
+        const key = i < j ? i + '-' + j : j + '-' + i;
+        if (!seen.has(key)) { seen.add(key); links.push({ a: i, b: j, activity: (nodes[i].activity + nodes[j].activity) / 2 }); }
+      });
+  });
+  return { nodes, links };
+}
+// mV that counts as "fully lit" -- a tuned display heuristic, not a
+// calibrated threshold; revisit against real VP amplitudes once more devices
+// report.
+const FULL_GLOW_MV = 5;
+function siteCanopyFor(n) {
+  const r = roster.find((x) => x.id === n.id);
+  if (r) return r.canopy;
+  return n.real ? 20 + Math.min(30, n.activity * 4) : 12;
+}
 
 const DEFAULT_THRESHOLD_MV = 70; // real backend doesn't expose a threshold yet -- see spike rendering below
 
@@ -22,14 +76,11 @@ const fmtAgo = (ts) => {
 // Soil moisture is real: wired to Contract A's soil_mv below.
 const WEATHER_CONDITIONS = [['68%', 'Air humidity'], ['14.2°C', 'Air temperature'], ['320 lux', 'Light level']];
 
-const NODE_TONE = {
-  ok: ['var(--color-accent-2-200)', 'var(--color-accent-2-900)', '#56633f'],
-  quiet: ['var(--color-accent-200)', 'var(--color-accent-900)', '#c67139']
-};
-
 export default function Dashboard() {
   const { signedIn, token } = useAuth();
   const news = useNews(6);
+  const network = useNetwork();
+  const graph = useMemo(() => buildSiteGraph(network.density, network.nodes), [network.density, network.nodes]);
   const [device, setDevice] = useState('sense-1');
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
@@ -344,42 +395,52 @@ export default function Dashboard() {
             <div style={css('position: relative; border-radius: var(--radius-lg); background: var(--color-neutral-200)')}>
               <svg viewBox="0 0 600 300" style={{ width: '100%', height: 'auto', display: 'block' }}>
                 <rect x="0" y="0" width="600" height="300" fill="#e7dcc7" />
-                {roster.map((n) => {
-                  const rx = 42 + n.canopy * 1.3;
-                  return <ellipse key={'p' + n.id} cx={n.x} cy={n.y} rx={rx.toFixed(0)} ry={(rx * 0.62).toFixed(0)} fill="#7a8a5e" opacity={(0.1 + (n.canopy / 100) * 0.62).toFixed(2)} />;
+                {graph.nodes.map((n) => {
+                  const c = siteCanopyFor(n);
+                  const rx = 42 + c * 1.3;
+                  return <ellipse key={'p' + n.id} cx={n.x} cy={n.y} rx={rx.toFixed(0)} ry={(rx * 0.62).toFixed(0)} fill="#7a8a5e" opacity={(0.1 + (c / 100) * 0.62).toFixed(2)} />;
                 })}
-                {nodeLinks.map(([a, b], i) => (
-                  <line key={'l' + i} x1={roster[a].x} y1={roster[a].y} x2={roster[b].x} y2={roster[b].y} stroke="#8c491a" strokeWidth="2" strokeDasharray="6 6" opacity="0.6" />
-                ))}
-                {roster.map((n) => {
-                  const t = NODE_TONE[n.status];
+                {graph.links.map((l, i) => {
+                  const glow = Math.min(1, l.activity / FULL_GLOW_MV);
+                  return (
+                    <line key={'l' + i} x1={graph.nodes[l.a].x} y1={graph.nodes[l.a].y} x2={graph.nodes[l.b].x} y2={graph.nodes[l.b].y}
+                      stroke={glow > 0.15 ? '#c67139' : '#8c491a'} strokeWidth={glow > 0.15 ? 2.5 : 2} strokeDasharray="6 6" opacity={(0.25 + glow * 0.65).toFixed(2)} />
+                  );
+                })}
+                {graph.nodes.map((n) => {
+                  const glow = Math.min(1, n.activity / FULL_GLOW_MV);
+                  const fill = !n.real ? 'var(--color-neutral-400)' : glow > 0.5 ? 'var(--color-accent-500)' : 'var(--color-accent-2-500)';
+                  const dot = !n.real ? 'var(--color-neutral-600)' : glow > 0.5 ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)';
+                  const r = n.real ? 15 : 9;
                   return (
                     <g key={'n' + n.id} onMouseEnter={() => setHoverId('map-' + n.id)} onMouseLeave={() => setHoverId(null)} style={{ cursor: 'pointer' }}>
-                      <circle cx={n.x} cy={n.y} r="18" fill={t[0]} opacity="0.55" />
-                      <circle cx={n.x} cy={n.y} r="15" fill={t[0]} />
-                      <circle cx={n.x} cy={n.y} r="8" fill={t[2]} />
+                      <circle cx={n.x} cy={n.y} r={r + 3} fill={fill} opacity={n.real ? 0.4 + glow * 0.4 : 0.35} />
+                      <circle cx={n.x} cy={n.y} r={r} fill={fill} opacity={n.real ? 1 : 0.7} />
+                      {n.real && <circle cx={n.x} cy={n.y} r="6" fill={dot} />}
                     </g>
                   );
                 })}
               </svg>
-              {roster.map((n) => hoverId === 'map-' + n.id && (
+              {graph.nodes.map((n) => hoverId === 'map-' + n.id && (
                 <span key={'t' + n.id} style={{ position: 'absolute', left: ((n.x / 600) * 100).toFixed(1) + '%', top: ((n.y / 300) * 100).toFixed(1) + '%', transform: 'translate(-50%, -140%)', zIndex: 40, whiteSpace: 'nowrap', padding: '9px 14px', borderRadius: 'var(--radius-lg)', background: 'var(--color-neutral-900)', color: 'var(--color-neutral-100)', fontSize: 13, boxShadow: 'var(--shadow-md)', pointerEvents: 'none' }}>
-                  {n.id} · {n.plant} · {n.site}
+                  {n.real ? n.id + ' · ' + n.activity.toFixed(1) + ' mV activity' : 'Estimated coverage, no router here yet'}
                 </span>
               ))}
             </div>
             <div className="flex flex-wrap gap-2.5">
-              {roster.map((n) => {
-                const t = NODE_TONE[n.status];
+              {graph.nodes.filter((n) => n.real).map((n) => {
+                const glow = Math.min(1, n.activity / FULL_GLOW_MV);
+                const bg = glow > 0.5 ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)';
+                const fg = glow > 0.5 ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)';
                 return (
-                  <span key={'c' + n.id} style={css('position: relative; display: inline-flex')}>
-                    <span className="tag" onMouseEnter={() => setHoverId('chip-' + n.id)} onMouseLeave={() => setHoverId(null)} style={{ borderRadius: 999, background: t[0], color: t[1] }}>
-                      {n.id} · {n.canopy}% canopy · {n.status === 'ok' ? 'reporting' : 'quiet 6h'}
-                    </span>
-                    {hoverId === 'chip-' + n.id && tip(n.plant + ' · ' + n.site)}
+                  <span key={'c' + n.id} className="tag" style={{ borderRadius: 999, background: bg, color: fg }}>
+                    {n.id} · {n.activity.toFixed(1)} mV activity
                   </span>
                 );
               })}
+              <span className="tag tag-neutral" style={css('border-radius: 999px')}>
+                {Math.max(0, graph.nodes.length - graph.nodes.filter((n) => n.real).length)} estimated, unconfirmed
+              </span>
             </div>
           </div>
 
