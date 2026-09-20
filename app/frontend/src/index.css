@@ -42,11 +42,32 @@ html.is-loading, html.is-loading body { overflow: hidden; }
      a non-scrolling axis of a sticky element is easy to get subtly wrong) --
      width:fit-content + margin-left:auto right-aligns it within its parent,
      the same trick as centering with auto margins. */
+  /* NOTE (stale as of the height:0 change below): the margin-based
+     right-alignment described above was replaced with flex justify-content,
+     because fixing the footer-gap bug meant zeroing this box's own height,
+     which left width:fit-content with no box to size against. Left as-is
+     per this project's comment-preservation rule -- flagged to the user
+     rather than rewritten. */
   position: sticky;
   bottom: max(16px, env(safe-area-inset-bottom, 0px));
-  width: fit-content;
-  margin-left: auto;
-  margin-right: max(16px, env(safe-area-inset-right, 0px));
+  /* Sticky elements keep occupying their normal-flow layout box even while
+     "stuck" -- with the svg's real height, that box reserved ~100px of
+     blank space after the page's last section (visible as a stray gap, with
+     the landing page's fixed canopy layer showing through it as a
+     gradient sliver, since that empty space had nothing else painted over
+     it). height:0 removes that reserved space; flex hangs the
+     (overflow-visible) svg upward from the zero-height line instead of
+     relying on the box's own height. Sticky's containment clamps against
+     this zero-height box's position, not the visual overflow, so it still
+     can't stick past its parent's edge -- the mascot still can't overlap
+     the footer, it just releases with no leftover space instead of
+     reserved space. */
+  height: 0;
+  overflow: visible;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   z-index: 45;
   pointer-events: none;
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
