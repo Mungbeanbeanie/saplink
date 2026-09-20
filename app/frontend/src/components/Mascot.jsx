@@ -5,10 +5,10 @@ import React, { useEffect, useRef } from 'react';
 // bar eyes) and saplink-mascot-smiling.svg (happy, arc eyes + smile) -- inline
 // rather than an <img> because the eye group needs a ref to follow the cursor.
 // Mounted once at the app root (see main.jsx) so it survives route changes.
-// Its eyes track the cursor, it smiles when the cursor comes near, and it
+// Its eyes track the cursor everywhere on the page; it only smiles while the
+// cursor is actually hovering it (plain CSS :hover -- see index.css), and it
 // blinks on an irregular timer.
 export default function Mascot() {
-  const rootRef = useRef(null);
   const svgRef = useRef(null);
   const faceRef = useRef(null);
   const eyesRef = useRef(null);
@@ -16,7 +16,6 @@ export default function Mascot() {
 
   useEffect(() => {
     const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const root = rootRef.current;
     const svgEl = svgRef.current;
     const face = faceRef.current;
     const eyes = eyesRef.current;
@@ -26,9 +25,6 @@ export default function Mascot() {
     // (the box is 320 wide), while still reading as part of the face.
     const MAX_EYE_OFFSET = 12;
     const MAX_TILT = 8; // degrees the whole face turns toward the cursor
-    // Smile when the cursor is this close, in px; the wider exit radius is
-    // hysteresis, so a cursor parked on the boundary can't flicker the face.
-    const HAPPY_IN = 180, HAPPY_OUT = 230;
 
     // Face center in the SVG's "200 140 320 420" viewBox, kept in sync with
     // screen space below since the mascot is fixed in place.
@@ -39,7 +35,6 @@ export default function Mascot() {
       anchor.y = r.top + r.height * 0.54; // eyes sit at y~368 of 140..560
     };
 
-    let happy = false;
     const look = (clientX, clientY) => {
       const dx = clientX - anchor.x, dy = clientY - anchor.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -50,8 +45,6 @@ export default function Mascot() {
       const ox = nx * MAX_EYE_OFFSET * reach, oy = ny * MAX_EYE_OFFSET * reach;
       if (eyes) eyes.style.transform = 'translate(' + ox.toFixed(2) + 'px,' + oy.toFixed(2) + 'px)';
       if (face) face.style.transform = 'rotate(' + (nx * reach * MAX_TILT).toFixed(2) + 'deg)';
-      happy = dist < (happy ? HAPPY_OUT : HAPPY_IN);
-      if (root) root.classList.toggle('is-happy', happy);
     };
 
     let queued = false, lastX = 0, lastY = 0;
@@ -88,7 +81,7 @@ export default function Mascot() {
   }, []);
 
   return (
-    <div className="mascot" ref={rootRef} aria-hidden="true">
+    <div className="mascot" aria-hidden="true">
       <svg ref={svgRef} viewBox="200 140 320 420" width="78" height="102">
         <ellipse className="m-shadow" cx="360" cy="541" rx="121" ry="11" fill="#e3d6c6" />
         <g className="m-body-g">
