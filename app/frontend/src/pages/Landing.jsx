@@ -1,13 +1,12 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import Footer from '../components/Footer.jsx';
 import Mascot from '../components/Mascot.jsx';
 import FadeWords from '../components/FadeWords.jsx';
+import DashboardLink from '../components/DashboardLink.jsx';
 import BranchScene from '../scene/BranchScene.jsx';
 import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
-import { useAuth, isConfigured, promptSignIn } from '../lib/auth.js';
 
 const STEPS = [
   ['01', 'One plant sends', 'Its router picks up a change in the plant’s electrical activity — water, light, a wound, anything it responds to.', 'sage'],
@@ -16,34 +15,6 @@ const STEPS = [
 ];
 
 const CTA_STYLE = css('border-radius: 999px; padding: 13px 26px; font-size: 16px');
-
-// "Open the dashboard": signed-in visitors go straight there; signed-out
-// visitors are asked to sign in with Google first, then land on the
-// dashboard once that completes.
-function DashboardCta() {
-  const { signedIn } = useAuth();
-  const navigate = useNavigate();
-  const [wantsDashboard, setWantsDashboard] = React.useState(false);
-
-  React.useEffect(() => {
-    if (wantsDashboard && signedIn) navigate('/dashboard');
-  }, [wantsDashboard, signedIn, navigate]);
-
-  if (signedIn) {
-    return <Link to="/dashboard" className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</Link>;
-  }
-  return (
-    <button
-      type="button"
-      className="btn btn-primary"
-      style={CTA_STYLE}
-      title={isConfigured() ? undefined : 'Google sign-in needs VITE_GOOGLE_CLIENT_ID set -- see .env.example'}
-      onClick={() => { setWantsDashboard(true); promptSignIn(); }}
-    >
-      Open the dashboard
-    </button>
-  );
-}
 
 export default function Landing() {
   const [sent, setSent] = React.useState(false);
@@ -66,7 +37,7 @@ export default function Landing() {
               <FadeWords delayOffset={180} text="Saplink is a router for plants. One clips onto a living stem, picks up the electrical signals the plant sends as its conditions change — more water, more light, a wound, a dry spell — and puts them on the network, so nearby plants and you both get the message within seconds." />
             </p>
             <div className="flex flex-wrap gap-3 items-center" style={css('padding-top: 6px')}>
-              <DashboardCta />
+              <DashboardLink className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</DashboardLink>
             </div>
           </div>
         </section>
@@ -115,7 +86,7 @@ export default function Landing() {
             <h2 style={css('margin: 0; font-size: clamp(32px, 4.4vw, 56px); line-height: 1.05')}><FadeWords text="Put a router on your first plant." /></h2>
             <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 46ch')}><FadeWords delayOffset={140} text="The readings are open to everyone. Sign in with Google to acknowledge signals and send a test signal across the plant network." /></p>
             <div className="flex flex-wrap gap-3 items-center">
-              <DashboardCta />
+              <DashboardLink className="btn btn-primary" style={CTA_STYLE}>Open the dashboard</DashboardLink>
             </div>
             <form onSubmit={(e) => { e.preventDefault(); setSent(true); }} style={css('display: flex; flex-wrap: wrap; gap: 10px; width: 100%; max-width: 520px')}>
               <input className="input" type="email" required placeholder="you@example.com" style={css('flex: 1 1 240px; border-radius: 999px; padding: 13px 20px')} />

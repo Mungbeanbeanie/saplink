@@ -1,10 +1,12 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth, promptSignIn } from '../lib/auth.js';
+import { useAuth, isConfigured, promptSignIn } from '../lib/auth.js';
 
 // A link to /dashboard that asks signed-out visitors to sign in with Google
-// first (same flow as Landing's "Open the dashboard" button), then takes them
-// there once sign-in completes. Signed-in visitors just navigate normally.
+// first (same flow as Landing's old "Open the dashboard" button -- now built
+// on this shared component instead of its own copy of this logic), then
+// takes them there once sign-in completes. Signed-in visitors just navigate
+// normally.
 export default function DashboardLink({ children, ...props }) {
   const { signedIn } = useAuth();
   const navigate = useNavigate();
@@ -21,5 +23,14 @@ export default function DashboardLink({ children, ...props }) {
     promptSignIn();
   };
 
-  return <Link to="/dashboard" onClick={onClick} {...props}>{children}</Link>;
+  return (
+    <Link
+      to="/dashboard"
+      onClick={onClick}
+      title={signedIn || isConfigured() ? undefined : 'Google sign-in needs VITE_GOOGLE_CLIENT_ID set -- see .env.example'}
+      {...props}
+    >
+      {children}
+    </Link>
+  );
 }
