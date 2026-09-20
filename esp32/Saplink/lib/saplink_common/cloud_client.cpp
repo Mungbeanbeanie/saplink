@@ -16,6 +16,12 @@
 
 #include "secrets.h"
 
+// ponytail: DEAD in the combo path -- combo_main.cpp's wifiUp() owns the
+// connection and this class only ever rides an already-open one. Left as the
+// stretch boards' entry point, but note it is single-SSID: it does NOT honour
+// secrets.h's WIFI_NETWORKS fallback list. Route any new caller through a
+// wifiUp()-equivalent instead of calling this, or the fallback silently
+// stops applying.
 bool CloudClient::begin() {
   if (WiFi.status() == WL_CONNECTED) return true;
   Serial.printf("cloud_client: connecting to %s\n", WIFI_SSID);

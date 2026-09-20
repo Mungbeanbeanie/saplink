@@ -270,22 +270,72 @@ static uint32_t readSoilMv(uint8_t pin) {
   return sum / 16;
 }
 
+// SERIAL_INGEST: the last resort when no network in the room will take the
+// board. `pio run -e serialingest -t upload` swaps the HTTPS transport for the
+// USB cable already plugged into the laptop -- the laptop has internet (a human
+// can click through a captive portal; the ESP32 cannot) and relays to the same
+// API via tools/serial_bridge.py. Nothing else about the demo changes: same
+// JSON, same endpoints, same dashboard, same cloud round-trip for actuation.
+//
+// Markers, not bare JSON: they are what lets the bridge pick real batches out
+// of a UART that also carries log lines and pump EMI. Defined unconditionally
+// so the normal build still type-checks them.
+static const char *kSerialBatchMarker = "@R ";
+static const char *kSerialAlertMarker = "@A ";
+
+// Candidates from secrets.h, tried in order. A phone hotspot is the demo's
+// primary network precisely because the venue's is unknown until you stand in
+// it -- and a hotspot that is off, renamed, or 5GHz-only fails with status=1
+// after burning the ENTIRE timeout, every batch, forever. A second entry turns
+// that from a dead board into a slow first batch.
+struct WifiNet {
+  const char *ssid;
+  const char *pass;
+};
+static const WifiNet kWifiNets[] = WIFI_NETWORKS;
+static_assert(sizeof kWifiNets / sizeof kWifiNets[0] >= 1,
+              "WIFI_NETWORKS must list at least one network");
+
+// Per network, not total: two entries keep the worst case at the same 20s the
+// single-SSID version already cost. Calibration knob -- a congested venue AP
+// can need longer than a hotspot sitting on the table does.
+static const uint32_t kWifiTryMs = 10000;
+
 static bool wifiUp() {
+#ifdef SERIAL_INGEST
+  // The radio is never brought up in this mode. That is not just a skip: the
+  // USB cable is carrying the data, so leaving WiFi down also removes the
+  // biggest current draw on the rail -- the last resort is the LEAST likely
+  // build to brown out mid-demo, which is the point of having one.
+  return true;
+#else
   if (WiFi.status() == WL_CONNECTED) return true;
-  Serial.printf("wifi: connecting to %s\n", WIFI_SSID);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(250);
-  if (WiFi.status() != WL_CONNECTED) {
+  for (const WifiNet &net : kWifiNets) {
+    Serial.printf("wifi: connecting to %s\n", net.ssid);
+    WiFi.begin(net.ssid, net.pass);
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < kWifiTryMs)
+      delay(250);
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("wifi ok ");
+      Serial.println(WiFi.localIP());
+      return true;
+    }
     // Don't block forever -- a board that can't find the network should say so
     // and keep retrying, not sit silent.
-    Serial.printf("wifi: FAILED (status=%d), retrying\n", WiFi.status());
-    return false;
+    // status=1 NO_SSID_AVAIL (wrong name, or 5GHz-only -- this radio is 2.4
+    // only), 4 CONNECT_FAILED (wrong password), 6 DISCONNECTED (signal/AP).
+    Serial.printf("wifi: %s FAILED (status=%d), retrying\n", net.ssid,
+                  WiFi.status());
+    // Half-open attempts stack: begin() on the next SSID while this one is
+    // still pending leaves the core retrying the old one, and the status
+    // printed above would then describe neither network.
+    WiFi.disconnect();
+    delay(100);
   }
-  Serial.print("wifi ok ");
-  Serial.println(WiFi.localIP());
-  return true;
+  return false;
+#endif
 }
 
 // One plant's batch. batch_seq is a parameter rather than the global, which is
@@ -334,6 +384,15 @@ static void post(const Plant &p, uint32_t batch_seq, const Snapshot &s,
   }
   snprintf(body + n, sizeof body - n, "]}");
 
+#ifdef SERIAL_INGEST
+  // Same bytes that would have gone into the POST body, handed to the USB cable
+  // instead. tools/serial_bridge.py relays them. The marker matters more than
+  // it looks: this UART shares a rig with a pump whose EMI produces framing
+  // garbage, so the bridge needs a way to tell a batch from noise that happens
+  // to contain a brace.
+  Serial.print(kSerialBatchMarker);
+  Serial.println(body);
+#else
   WiFiClientSecure client;
   // ponytail: setInsecure() skips cert validation. The bearer token is the real
   // auth and TLS still stops passive sniffing. Proper pinning needs an
@@ -354,6 +413,7 @@ static void post(const Plant &p, uint32_t batch_seq, const Snapshot &s,
   if (code < 0) Serial.printf("  %s\n", http.errorToString(code).c_str());
   else if (code >= 400) Serial.printf("  %s\n", http.getString().c_str());
   http.end();
+#endif
 }
 
 // Log BEFORE energising, never during. The motor's EMI makes serial unreadable
@@ -566,7 +626,25 @@ void loop() {
         pkt.voltage_mv = fabsf(p.peak_mv);
         pkt.threshold_mv = p.threshold_mv;
         pkt.timestamp_ms = p.spike_ms;
+#ifdef SERIAL_INGEST
+        // Field-for-field identical to CloudClient::postAlert()'s body -- the
+        // bridge POSTs it to the same /api/alerts. The alert still goes to the
+        // cloud and still comes back as a pending alert, so this is the real
+        // routed path over a different wire, not a local if-statement.
+        {
+          char ab[256];
+          snprintf(ab, sizeof ab,
+                   "{\"node_id\":%u,\"event_type\":\"%s\",\"voltage_mv\":%.3f,"
+                   "\"threshold_mv\":%.3f,\"timestamp_ms\":%lu}",
+                   pkt.node_id, eventTypeToString(pkt.event_type),
+                   pkt.voltage_mv, pkt.threshold_mv,
+                   (unsigned long)pkt.timestamp_ms);
+          Serial.print(kSerialAlertMarker);
+          Serial.println(ab);
+        }
+#else
         cloud.postAlert(pkt);
+#endif
 
         p.send_tail = true;
       } else if (p.send_tail) {
@@ -593,6 +671,13 @@ void loop() {
     // /api/alerts/pending: the backend's one-un-acked-at-a-time rule plus
     // kMinActuateGapMs already cap this at one dose per 30s however many plants
     // are firing.
+#ifdef SERIAL_INGEST
+    // The board cannot poll: it has no network. The BRIDGE does the poll and
+    // the ack against the same /api/alerts/pending, then sends 'p' down the
+    // cable, which the key handler at the top of loop() already turns into
+    // actuate(). So the cloud still decides -- the return leg just arrives as a
+    // byte on the UART instead of an HTTP response body.
+#else
     int alert_id = 0;
     PacketSchema incoming;
     if (cloud.pollPendingAlert(incoming, alert_id)) {
@@ -610,6 +695,7 @@ void loop() {
         }
       }
     }
+#endif
   }
 
   // OUTSIDE the wifiUp() block, deliberately. A dropped connection must leave
