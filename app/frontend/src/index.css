@@ -85,6 +85,57 @@ html.is-loading, html.is-loading body { overflow: hidden; }
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
 }
 .mascot svg { display: block; overflow: visible; pointer-events: auto; }
+/* Wraps the svg so the speech bubble (below) has something of the right
+   size to position itself against -- inline-block shrink-wraps to the svg's
+   own dimensions, same footprint the svg had as the direct flex item before. */
+.mascot-stage { position: relative; display: inline-block; }
+.mascot-bubble {
+  /* Landscape, not portrait: a wide min-width paired with a capped max-height
+     (overflow hidden as the safety net for a title long enough to wrap past
+     it) makes the box wider than it is tall no matter what the article's
+     title happens to be, rather than just "usually" wide. */
+  position: absolute; bottom: calc(100% + 14px); right: 4px;
+  width: max-content; min-width: 190px; max-width: min(320px, calc(100vw - 40px));
+  max-height: 96px; overflow: hidden;
+  padding: 10px 14px; border-radius: var(--radius-lg);
+  background: var(--color-neutral-100); color: var(--color-neutral-900);
+  font-size: 13px; line-height: 1.45; box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-neutral-300);
+  animation: mascot-bubble-in .2s ease both;
+  display: block; text-decoration: none;
+  /* Overrides the pointer-events:none inherited from .mascot (only the svg
+     opts back in otherwise) -- without this the article link underneath
+     can't actually be clicked. */
+  pointer-events: auto;
+}
+a.mascot-bubble { cursor: pointer; }
+a.mascot-bubble:hover { text-decoration: underline; }
+.mascot-bubble::after {
+  content: ''; position: absolute; top: 100%; right: 24px;
+  border: 7px solid transparent; border-top-color: var(--color-neutral-100);
+}
+.mascot-caret { display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: -2px; background: currentColor; animation: mascot-caret-blink .8s step-end infinite; }
+@keyframes mascot-bubble-in { from { opacity: 0; transform: translateY(8px) scale(.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes mascot-caret-blink { 50% { opacity: 0; } }
+/* The talking mouth: nested in .m-face-happy, so it's only ever visible
+   while already hovering (the happy face itself is hover-only, see below) --
+   .is-talking is set on .mascot only for the duration of the bubble's
+   typewriter effect (src/components/Mascot.jsx), so it stops once the line's
+   fully typed even though the mouse is still hovering.
+
+   Not a smooth scale of the smile curve (tried first -- read as barely
+   moving) but a hard swap between two distinct shapes: a short flat line
+   and a small dark circle, alternating every 150ms to read as a mouth
+   opening and closing. Each keyframe holds its value flat across most of
+   its half of the cycle and only changes right at the 50% boundary, so no
+   steps()/easing trickery is needed to keep the swap instant rather than a
+   fade. Plain smile stays the resting shape once talking stops. */
+.m-mouth-line, .m-mouth-circle { opacity: 0; stroke: #4a2e1c; }
+.mascot.is-talking .m-mouth-smile { opacity: 0; }
+.mascot.is-talking .m-mouth-line { animation: mascot-mouth-line .3s linear infinite; }
+.mascot.is-talking .m-mouth-circle { animation: mascot-mouth-circle .3s linear infinite; }
+@keyframes mascot-mouth-line { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes mascot-mouth-circle { 0%, 49.9% { opacity: 0; } 50%, 100% { opacity: 1; } }
 .m-shadow { transform-origin: 360px 541px; animation: mascot-shadow 3.6s ease-in-out infinite; }
 .m-body-g { transform-box: view-box; transform-origin: 360px 530px; animation: mascot-bob 3.6s ease-in-out infinite; }
 .m-sprout { transform-box: view-box; transform-origin: 353px 290px; animation: mascot-sway 4.8s ease-in-out infinite; }
@@ -101,6 +152,10 @@ html.is-loading, html.is-loading body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .m-shadow, .m-body-g, .m-sprout { animation: none; }
   .mascot-face, .mascot-eyes, .m-face-idle { transition: none; }
+  .mascot-bubble { animation: none; }
+  .mascot-caret { animation: none; }
+  .mascot.is-talking .m-mouth-line, .mascot.is-talking .m-mouth-circle { animation: none; opacity: 0; }
+  .mascot.is-talking .m-mouth-smile { opacity: 1; }
 }
 @media (max-width: 520px) { .mascot svg { width: 60px; height: 78px; } }
 
