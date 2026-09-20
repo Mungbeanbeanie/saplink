@@ -11,7 +11,6 @@ import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
 import { useNetwork } from '../lib/network.js';
 import { useStatusHistory } from '../lib/statusHistory.js';
-import { useWeather } from '../lib/weather.js';
 
 // Site-map graph: every node is a real device from /api/network, laid out on
 // a fixed schematic grid -- there's no real per-router GPS/site-layout data
@@ -57,6 +56,25 @@ function buildSiteGraph(realNodes) {
 // report.
 const FULL_GLOW_MV = 5;
 
+// Real per-probe calibration, measured by air/water dip -- see
+// esp32/Saplink/src/soil_main.cpp's kDryMv/kWetMv (comment there: "the two
+// differ by 21mV dry and 45mV wet ... a shared constant would quietly bias
+// one plant against the other"). HIGHER raw mV is DRIER, confirmed by that
+// file's own moisturePct() formula -- inverted below. Used ONLY to size/color
+// the site map's moisture glow, never rendered as a number: the dashboard
+// still shows raw mV, matching main.py/combo_main.cpp's "map both at once, or
+// neither" decision to not put a % next to a raw-mV trace. Re-measure if a
+// probe is swapped or reseated -- these are physical constants, not tunable.
+const SOIL_CALIBRATION = {
+  'sense-1': { dry: 2154, wet: 865 },
+  'sense-2': { dry: 2175, wet: 910 },
+};
+function wetFraction(device, soilMv) {
+  if (soilMv == null) return null;
+  const cal = SOIL_CALIBRATION[device] || SOIL_CALIBRATION['sense-1'];
+  return Math.min(1, Math.max(0, (cal.dry - soilMv) / (cal.dry - cal.wet)));
+}
+
 const DEFAULT_THRESHOLD_MV = 70; // real backend doesn't expose a threshold yet -- see spike rendering below
 
 const fmtTime = (t) => (t ? new Date(t).toTimeString().slice(0, 8) : '—');
@@ -80,7 +98,6 @@ export default function Dashboard() {
   // tab list once /api/health answers.
   const [device, setDevice] = useState(() => searchParams.get('device') || 'sense-1');
   const statusHours = useStatusHistory(device);
-  const weather = useWeather();
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
@@ -94,10 +111,18 @@ export default function Dashboard() {
   const [exportNote, setExportNote] = useState('');
   const [exportKind, setExportKind] = useState('csv');
   const [soilMv, setSoilMv] = useState(null);
+  const wetFrac = useMemo(() => wetFraction(device, soilMv), [device, soilMv]);
   const lastId = useRef(0);
 
   // Readings: the API when it answers, a labelled preview feed when it does not.
+  // Keyed on `device` (the backend now supports ?device= filtering) so
+  // switching tabs restarts cleanly for the new router instead of mixing in
+  // whichever device's batch last arrived -- lastId/samples/soilMv all reset,
+  // since they're otherwise stale state from the previous tab.
   useEffect(() => {
+    lastId.current = 0;
+    setSamples([]);
+    setSoilMv(null);
     // The wire shape is the real backend's (app/backend/main.py): { last_id,
     // samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src,
     // soil_mv, seq }] }. t_ms is the router's millis() clock, not a wall-clock
@@ -133,13 +158,13 @@ export default function Dashboard() {
       return s.slice(-180);
     });
 
-    const tick = () => apiFetch('/api/readings/history?since_id=' + lastId.current)
+    const tick = () => apiFetch('/api/readings/history?since_id=' + lastId.current + '&device=' + encodeURIComponent(device))
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then(ingest, mock);
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [device]);
 
   useEffect(() => {
     const poll = () => apiFetch('/api/health')
@@ -397,14 +422,24 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="The site" /></h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}><FadeWords delayOffset={40} text="A schematic diagram of every real router on the network and how active each one is right now — positions here are just layout, not GPS/site placement (no location data exists for them yet)." /></p>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}><FadeWords delayOffset={40} text="A schematic diagram of every real router on the network and how active each one is right now — positions here are just layout, not GPS/site placement (no location data exists for them yet). The blue glow shows how wet the soil is for the selected router." /></p>
               </div>
+              <span className="tag tag-outline" style={css('border-radius: 999px')}>Soil moisture: {soilMv != null ? soilMv.toFixed(0) + ' mV (raw)' : '—'}</span>
             </div>
             {graph.nodes.length ? (
               <>
                 <div style={css('position: relative; border-radius: var(--radius-lg); background: var(--color-neutral-200)')}>
                   <svg viewBox="0 0 600 300" style={{ width: '100%', height: 'auto', display: 'block' }}>
                     <rect x="0" y="0" width="600" height="300" fill="#e7dcc7" />
+                    <defs>
+                      <radialGradient id="moistureGlow" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stopColor="#2f6fa8" stopOpacity="0.65" />
+                        <stop offset="100%" stopColor="#2f6fa8" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
+                    {wetFrac != null && (
+                      <circle cx="300" cy="150" r={20 + wetFrac * 210} fill="url(#moistureGlow)" />
+                    )}
                     {graph.links.map((l, i) => {
                       const glow = Math.min(1, l.activity / FULL_GLOW_MV);
                       return (
@@ -449,23 +484,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
-            <div>
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Conditions" /></h2>
-              <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="Each router measures these alongside the electrical signal, because weather shapes how a plant reacts." /></p>
-            </div>
-            <div style={css('flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px')}>
-              <div style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
-                <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{soilMv != null ? soilMv.toFixed(0) + ' mV' : '—'}</div>
-                <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Soil moisture (raw)</div>
-              </div>
-              <div style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
-                <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{weather.ok && weather.temperature_f != null ? Math.round(weather.temperature_f) + '°F' : '—'}</div>
-                <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Outdoor temp (Blacksburg)</div>
-              </div>
-            </div>
-            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>Air humidity and light aren't measured yet — no sensor for either exists in the hardware. Temperature above is Blacksburg's current outdoor weather from a public feed, not a reading from the plant's own sensors.</p>
-          </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
             <div className="flex items-center justify-between gap-3">
