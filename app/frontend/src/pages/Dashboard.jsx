@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import Copyright from '../components/Copyright.jsx';
@@ -81,7 +82,13 @@ export default function Dashboard() {
   const news = useNews(6);
   const network = useNetwork();
   const graph = useMemo(() => buildSiteGraph(network.density, network.nodes), [network.density, network.nodes]);
-  const [device, setDevice] = useState('sense-1');
+  const [searchParams] = useSearchParams();
+  // Arriving from Account's "View" button (?device=sense-2) pre-selects that
+  // router's tab; an unknown/missing id just falls back to the default.
+  const [device, setDevice] = useState(() => {
+    const requested = searchParams.get('device');
+    return requested && roster.some((r) => r.id === requested) ? requested : 'sense-1';
+  });
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
