@@ -68,10 +68,10 @@ export default function Landing() {
               <span className="tag tag-accent-2" style={css('border-radius: 999px')}>Our mission</span>
               <h2 style={css('margin: 0; font-size: clamp(28px, 3.4vw, 44px); line-height: 1.08')}>Deforestation cuts the network. Saplink restores it.</h2>
               <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
-                <FadeWords delayOffset={200} text="Deforestation takes the largest trees first, and the rest of the stand depends on them. Across 176 restoration sites in tropical Asia, 44 percent of planted saplings died within five years, while those planted near standing mature trees survived at roughly 20 percent higher rates." />
+                <FadeWords delayOffset={200} text="Deforestation takes ~the largest trees first~, and the rest of the stand depends on them. Across 176 restoration sites in tropical Asia, ~44 percent~ of planted saplings died within five years, while those planted near standing mature trees survived at roughly ~20 percent higher rates~." />
               </p>
               <p style={css('margin: 0; color: var(--color-neutral-700); max-width: 52ch; line-height: 1.6; text-wrap: pretty')}>
-                <FadeWords delayOffset={340} text="Saplink spreads routers through the plants that remain, so what one of them senses still reaches its neighbours. We are building it for cleared ground that has been replanted and left to recover." />
+                <FadeWords delayOffset={340} text="Saplink spreads routers through the plants that remain, so what one of them senses ~still reaches its neighbours~. We are building it for ~cleared ground~ that has been replanted and left to recover." />
               </p>
               <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600); max-width: 52ch; line-height: 1.5')}>
                 Source: Banin et al. (2022), <a href="https://doi.org/10.1098/rstb.2021.0090" target="_blank" rel="noreferrer" style={css('color: inherit')}>The road to recovery: a synthesis of outcomes from ecosystem restoration in tropical and sub-tropical Asian forests</a>, Philosophical Transactions of the Royal Society B.

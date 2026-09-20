@@ -25,6 +25,9 @@ a:hover { color: var(--color-accent-800); }
    inline element can't be transformed, so translateY in the keyframes above
    would silently no-op on a bare <span>. */
 .fade-word { display: inline-block; }
+/* Words wrapped in ~tildes~ in a FadeWords `text` string. Same terracotta as
+   the two-plants diagram's seed dot and the accent scale's base. */
+.fade-hl { color: var(--color-accent-700); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
 
 /* Intro loader: the growing-branch scene (src/components/IntroLoader.jsx). */

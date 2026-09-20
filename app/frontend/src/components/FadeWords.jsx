@@ -14,21 +14,25 @@ const STEP_MS = 28;
 const MAX_DELAY_MS = 520;
 
 export default function FadeWords({ text, delayOffset = 0 }) {
-  const tokens = String(text).split(/(\s+)/); // keep whitespace tokens so wrapping/spacing stays natural
+  // A `~marked run~` renders highlighted: splitting on the marker leaves the
+  // highlighted runs at odd indices. Kept as an in-string marker rather than a
+  // prop so one call still covers a whole sentence and `wordIndex` keeps
+  // counting across the highlight, which is what holds the stagger even.
+  const segments = String(text).split('~');
   let wordIndex = 0;
   // Wrapped in one plain inline <span> so the whitespace tokens survive a flex
   // parent -- a flex container drops whitespace-only text nodes, which ran the
   // words together inside `.tag` (inline-flex) and the HowItWorks pills.
   return (
     <span>
-      {tokens.map((chunk, i) => {
+      {segments.map((segment, s) => segment.split(/(\s+)/).map((chunk, i) => { // keep whitespace tokens so wrapping/spacing stays natural
         if (!chunk.trim()) return chunk;
         const delay = delayOffset + Math.min(wordIndex * STEP_MS, MAX_DELAY_MS);
         wordIndex++;
         return (
-          <span key={i} className="fade-up fade-word" style={{ animationDelay: delay + 'ms' }}>{chunk}</span>
+          <span key={s + '-' + i} className={'fade-up fade-word' + (s % 2 ? ' fade-hl' : '')} style={{ animationDelay: delay + 'ms' }}>{chunk}</span>
         );
-      })}
+      }))}
     </span>
   );
 }
