@@ -6,7 +6,6 @@ import Mascot from '../components/Mascot.jsx';
 import BranchScene from '../scene/BranchScene.jsx';
 import { twoPlantsSvg, forestSvg } from '../art/artwork.js';
 import { css } from '../lib/css.js';
-import { useHealth } from '../lib/useHealth.js';
 import { useAuth, isConfigured, promptSignIn } from '../lib/auth.js';
 
 const STEPS = [
@@ -46,11 +45,7 @@ function DashboardCta() {
 }
 
 export default function Landing() {
-  const { health, error } = useHealth(15000);
   const [sent, setSent] = React.useState(false);
-
-  const online = !!(health && health.ok);
-  const ago = health && health.last_recv ? Math.max(0, Math.round((Date.now() - health.last_recv) / 1000)) : null;
 
   return (
     <>
@@ -72,16 +67,6 @@ export default function Landing() {
             <div className="flex flex-wrap gap-3 items-center" style={css('padding-top: 6px')}>
               <DashboardCta />
             </div>
-            <div style={css('display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; padding: 12px 20px; border-radius: 999px; background: var(--color-neutral-100); border: 1px solid var(--color-neutral-300); box-shadow: var(--shadow-sm); font-size: 13px; color: var(--color-neutral-700)')}>
-              <span style={css('display: inline-flex; align-items: center; gap: 9px; font-weight: 600; color: var(--color-neutral-900)')}>
-                <span style={{ width: 9, height: 9, borderRadius: 999, background: online ? 'var(--color-accent-2-600)' : error ? 'var(--color-accent-600)' : 'var(--color-neutral-400)' }} />
-                {online ? 'System online' : error ? 'API unreachable' : 'Checking system…'}
-              </span>
-              <span>{health && health.devices ? health.devices.length + (health.devices.length === 1 ? ' device' : ' devices') : '— devices'}</span>
-              <span>{health && health.batches != null ? health.batches.toLocaleString() + ' batches' : '— batches'}</span>
-              <span style={css('color: var(--color-neutral-600)')}>{ago == null ? 'last reading unknown' : 'last reading ' + ago + 's ago'}</span>
-            </div>
-            <p style={css('margin: 10px 0 0; font-size: 13px; color: var(--color-neutral-600)')}>Live from the monitoring system, refreshed every fifteen seconds.</p>
           </div>
         </section>
 

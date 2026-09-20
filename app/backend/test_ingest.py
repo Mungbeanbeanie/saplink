@@ -207,6 +207,66 @@ def test_soil_mv_optional():
     assert all(x["soil_mv"] is None for x in s), s
 
 
+def test_device_filter_splits_the_two_plants():
+    # One board posts both plants under different device names, so the two
+    # streams interleave in the table by id. Filtering is what keeps the
+    # dashboard's chart from splicing plant 2's samples into plant 1's trace.
+    r1 = c.post("/api/readings", json=batch(seq=30, device="sense-1", mv=[1.0]),
+                headers=AUTH)
+    r2 = c.post("/api/readings", json=batch(seq=30, device="sense-2", mv=[2.0]),
+                headers=AUTH)
+    assert r1.status_code == 200 and r2.status_code == 200, (r1.text, r2.text)
+    since = r1.json()["id"] - 1
+
+    both = c.get(f"/api/readings/history?since_id={since}").json()["samples"]
+    assert [x["device"] for x in both] == ["sense-1", "sense-2"], both
+
+    # Omitting the param must stay byte-identical to the pre-filter behaviour;
+    # that is the whole claim that makes this change additive.
+    only2 = c.get(f"/api/readings/history?since_id={since}&device=sense-2").json()
+    assert [x["mv"] for x in only2["samples"]] == [2.0], only2
+    # last_id is the max id among MATCHING rows, so the next poll skips
+    # sense-1's interleaved row rather than re-reading it.
+    assert only2["last_id"] == r2.json()["id"], only2
+
+    assert c.get("/api/readings/latest?device=sense-1").json()["sample"]["mv"] == 1.0
+    assert c.get(f"/api/readings/history?since_id={since}&device=nope"
+                 ).json()["samples"] == []
+
+
+def test_network_nodes_are_electrode_pairs_not_devices():
+    # A node is a PAIR OF ELECTRODES in a plant, named by node_id. Both plants
+    # count even though they share one ESP32 -- two pairs, two nodes -- and
+    # soil_mv rides along as data about a node rather than becoming one.
+    c.post("/api/readings", json=batch(seq=40, device="sense-1", node_id=1,
+                                       mv=[1.0], soil_mv=2000), headers=AUTH)
+    c.post("/api/readings", json=batch(seq=40, device="sense-2", node_id=2,
+                                       mv=[-9.0], soil_mv=1700), headers=AUTH)
+    # A post with no node_id is data, not hardware. This is the `curl` row
+    # that was rendering as a router on the site map.
+    c.post("/api/readings", json=batch(seq=40, device="curl", mv=[2.0]), headers=AUTH)
+
+    body = c.get("/api/network").json()
+    nodes = body["nodes"]
+    assert [n["node_id"] for n in nodes] == [1, 2], nodes
+    assert [n["device"] for n in nodes] == ["sense-1", "sense-2"], nodes
+    assert nodes[1]["activity"] == 9.0, nodes
+    # density counts nodes, so a stray curl post cannot inflate it
+    assert body["density"] == 2 / 8, body
+
+    # ...but curl and sense-2 stay DEVICES: that list feeds the plant tab bar,
+    # and filtering it here would take plant 2 off the dashboard entirely.
+    assert "sense-2" in c.get("/api/health").json()["devices"]
+
+
+def test_node_id_optional():
+    # Firmware built before node_id existed must keep ingesting -- same reason
+    # soil_mv is optional. Every other test posts without it.
+    assert c.post("/api/readings", json=batch(seq=41), headers=AUTH).status_code == 200
+    assert c.post("/api/readings", json=batch(seq=41, node_id=999),
+                  headers=AUTH).status_code == 422
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

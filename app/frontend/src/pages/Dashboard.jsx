@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
 import { useNews } from '../lib/news.js';
 import { useNetwork } from '../lib/network.js';
+import { useStatusHistory } from '../lib/statusHistory.js';
 
 // Site-map graph: every node is a real device from /api/network, laid out on
 // a fixed schematic grid -- there's no real per-router GPS/site-layout data
@@ -62,6 +63,9 @@ const fmtAgo = (ts) => {
   const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
   return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago';
 };
+const fmtHour = (epochSeconds) => new Date(epochSeconds * 1000).toLocaleString([], {
+  month: 'short', day: 'numeric', hour: 'numeric',
+});
 
 export default function Dashboard() {
   const { signedIn, token } = useAuth();
@@ -74,6 +78,7 @@ export default function Dashboard() {
   // anymore -- an id that turns out not to be real just won't show up in the
   // tab list once /api/health answers.
   const [device, setDevice] = useState(() => searchParams.get('device') || 'sense-1');
+  const statusHours = useStatusHistory(device);
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
@@ -190,7 +195,7 @@ export default function Dashboard() {
   const spikeActive = !!spike && !acked;
   const isSim = src !== 'ads1115';
   const online = !!(health && health.ok);
-  const ago = health && health.last_recv ? Math.max(0, Math.round((Date.now() - health.last_recv) / 1000)) + 's ago' : '—';
+  const ago = fmtAgo(health && health.last_recv);
   const gapBg = v.dropped ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)';
   const gapFg = v.dropped ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)';
 
@@ -231,10 +236,11 @@ export default function Dashboard() {
     );
   };
 
-  // No backend endpoint returns per-hour history (only current health and raw
-  // recent samples) -- "Status over time" below shows that honestly instead
-  // of fabricating 48 hours of blocks, same "not live yet" pattern already
-  // used for Response relay further down.
+  // "Status over time" below is real now (GET /api/status_history) -- one
+  // block per hour, colored client-side from each hour's {batches,events}.
+  // "Response relay" further down is still an honest "not live yet"
+  // placeholder -- that one's blocked on the backend's still-unbuilt
+  // pending-actuation mechanism (plan.md Phase 5), not a frontend gap.
 
   return (
     <>
@@ -288,8 +294,8 @@ export default function Dashboard() {
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 22px 24px; flex-direction: row; align-items: center; gap: 16px')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 46, height: 46, borderRadius: 999, background: gapBg, color: gapFg, fontFamily: 'var(--font-heading)', fontSize: 17, flex: 'none' }}>{v.completeness.toFixed(0)}%</span>
             <div style={css('min-width: 0')}>
-              <div style={css('font-family: var(--font-heading); font-size: 22px; line-height: 1.15')}>{v.dropped ? v.dropped + (v.dropped === 1 ? ' reading missing' : ' readings missing') : 'No readings missing'}</div>
-              <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 2px')}>Of the last {v.seqs.length} batches sent</div>
+              <div style={css('font-family: var(--font-heading); font-size: 22px; line-height: 1.15')}>{v.seqs.length + (v.seqs.length === 1 ? ' reading successful' : ' readings successful')}</div>
+              <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 2px')}>Out of the last {v.seqs.length + v.dropped} batches sent</div>
             </div>
           </div>
         </div>
@@ -359,9 +365,32 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Status over time</h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>An hour-by-hour view of the last two days, once the backend keeps that history — today it only reports current status.</p>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>An hour-by-hour view of the last two days for {device}. Each block is one hour.</p>
               </div>
-              <span className="tag tag-outline" style={css('border-radius: 999px')}>not live yet</span>
+              <div className="flex items-center gap-3" style={css('font-size: 12px; color: var(--color-neutral-700)')}>
+                <span className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--color-accent-2-600)', display: 'inline-block' }} />Reporting</span>
+                <span className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--color-accent-600)', display: 'inline-block' }} />Signal detected</span>
+                <span className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--color-neutral-400)', display: 'inline-block' }} />No data</span>
+              </div>
+            </div>
+            <div style={css('display: flex; gap: 2px; align-items: flex-end; overflow-x: auto')}>
+              {statusHours.map((h) => {
+                const state = h.batches === 0 ? 'offline' : h.events > 0 ? 'event' : 'reporting';
+                const bg = state === 'offline' ? 'var(--color-neutral-400)'
+                  : state === 'event' ? 'var(--color-accent-600)' : 'var(--color-accent-2-600)';
+                const label = fmtHour(h.hour_start) + ' — ' + h.batches + ' batch' + (h.batches === 1 ? '' : 'es')
+                  + (h.events ? ', ' + h.events + ' signal' + (h.events === 1 ? '' : 's') : '');
+                return (
+                  <span
+                    key={h.hour_start}
+                    title={label}
+                    style={{ flex: '1 0 5px', minWidth: 5, height: 40, borderRadius: 2, background: bg }}
+                  />
+                );
+              })}
+              {!statusHours.length && (
+                <p className="card-body" style={css('margin: 0; font-size: 14px; color: var(--color-neutral-600)')}>No history yet for this router.</p>
+              )}
             </div>
           </div>
 
@@ -518,7 +547,7 @@ export default function Dashboard() {
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
             <div className="flex items-center justify-between gap-3">
               <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Data completeness</h2>
-              <span className="tag" style={{ borderRadius: 999, background: gapBg, color: gapFg }}>{v.dropped ? v.dropped + ' missing' : 'all arrived'}</span>
+              <span className="tag" style={{ borderRadius: 999, background: gapBg, color: gapFg }}>{v.dropped ? v.seqs.length + ' of ' + (v.seqs.length + v.dropped) + ' arrived' : 'all arrived'}</span>
             </div>
             <p className="card-body" style={css('margin: 0; font-size: 14px')}>Each bar is a batch of readings. Orange bars mark readings that never arrived, so a quiet patch in the chart is never mistaken for a quiet plant.</p>
             <div className="flex items-end" style={css('gap: 3px; height: 46px')}>
@@ -530,44 +559,11 @@ export default function Dashboard() {
             <div style={css('display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; font-size: 14px')}>
               <span style={css('color: var(--color-neutral-700)')}>Batches shown</span>
               <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-900)')}>{v.seqs.length || '—'}</span>
-              <span style={css('color: var(--color-neutral-700)')}>Missing</span>
-              <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-900)')}>{v.dropped}</span>
+              <span style={css('color: var(--color-neutral-700)')}>Received</span>
+              <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-900)')}>{v.seqs.length + ' / ' + (v.seqs.length + v.dropped)}</span>
               <span style={css('color: var(--color-neutral-700)')}>Latest batch no.</span>
               <span style={css('font-family: ui-monospace, monospace; color: var(--color-neutral-900)')}>{v.seqs.length ? v.seqs[v.seqs.length - 1] : '—'}</span>
             </div>
-          </div>
-
-          <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Response relay</h2>
-              <span className="tag tag-outline" style={css('border-radius: 999px')}>not live yet</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px', borderRadius: 'var(--radius-lg)', background: acked ? 'var(--color-accent-2-200)' : 'var(--color-neutral-200)' }}>
-              <span style={{ width: 16, height: 16, borderRadius: 999, background: acked ? 'var(--color-accent-2-600)' : 'var(--color-neutral-400)' }} />
-              <div>
-                <div style={css('font-family: var(--font-heading); font-size: 20px; color: var(--color-neutral-900)')}>{acked ? 'Neighbouring plant primed' : 'Standing by'}</div>
-                <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 2px')}>{acked ? 'Signal acknowledged and passed on' : 'No unacknowledged signal waiting'}</div>
-              </div>
-            </div>
-            <p className="card-body" style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>When a signal is acknowledged, it is relayed to the router on a neighbouring plant. Shown here as a preview until that link is switched on.</p>
-          </div>
-
-          <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Send a test signal</h2>
-              <span className="tag tag-outline" style={css('border-radius: 999px')}>sign-in needed</span>
-            </div>
-            <p className="card-body" style={css('margin: 0; font-size: 14px')}>Replays a recorded signal so you can check the whole chain — router, alert, relay — without waiting for the plant to react.</p>
-            {signedIn ? (
-              <button type="button" onClick={sendReplay} className="btn btn-primary btn-block" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>
-                Send test signal
-              </button>
-            ) : (
-              <GoogleSignInButton size="large" shape="pill" />
-            )}
-            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>
-              {replayNote || (signedIn ? 'Recorded against your Google account.' : 'Anyone can view the readings; sending needs sign-in.')}
-            </p>
           </div>
 
         </div>
