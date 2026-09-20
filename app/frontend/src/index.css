@@ -170,6 +170,8 @@ a.mascot-bubble:hover { text-decoration: underline; }
 @keyframes mascot-bob { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-9px) scale(.99, 1.015); } }
 @keyframes mascot-shadow { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(.9); opacity: .7; } }
 @keyframes mascot-sway { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(3deg); } }
+.mascot-alert { transform-box: view-box; transform-origin: 430px 150px; animation: mascot-alert-float 2.2s ease-in-out infinite; }
+@keyframes mascot-alert-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) {
   .m-shadow, .m-body-g, .m-sprout { animation: none; }
   .mascot-face, .mascot-eyes, .m-face-idle { transition: none; }
@@ -177,6 +179,7 @@ a.mascot-bubble:hover { text-decoration: underline; }
   .mascot-caret { animation: none; }
   .mascot.is-talking .m-mouth-line, .mascot.is-talking .m-mouth-circle { animation: none; opacity: 0; }
   .mascot.is-talking .m-mouth-smile { opacity: 1; }
+  .mascot-alert { animation: none; }
 }
 @media (max-width: 520px) { .mascot svg { width: 60px; height: 78px; } }
 

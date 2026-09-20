@@ -388,7 +388,7 @@ def me(authorization: Annotated[Optional[str], Header()] = None):
 @app.get("/api/health")
 def health():
     n, last_recv = db.execute("SELECT COUNT(*), MAX(recv_ts) FROM batch").fetchone()
-    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
+    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch WHERE node_id IS NOT NULL")]
     return {"ok": True, "batches": n, "last_recv": last_recv, "devices": devices}
 
 
