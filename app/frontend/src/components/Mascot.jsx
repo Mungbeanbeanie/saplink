@@ -48,6 +48,9 @@ export default function Mascot() {
   const [revealed, setRevealed] = useState('');
   const [talking, setTalking] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Unread-news badge: floats above the mascot's head until the first hover,
+  // then never comes back for the rest of the session.
+  const [alertSeen, setAlertSeen] = useState(false);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -147,6 +150,7 @@ export default function Mascot() {
   // avoids repeating the article that was just shown when there's more
   // than one to choose from.
   const handleMouseEnter = () => {
+    setAlertSeen(true);
     if (!news.length) { setArticle({ title: "Still fetching the news feed — check back in a moment.", isFallback: true }); return; }
     let next = news[Math.floor(Math.random() * news.length)];
     if (news.length > 1) {
@@ -281,6 +285,14 @@ export default function Mascot() {
                 independent of hover/talking, so it works from either face. */}
             <circle ref={surpriseRef} className="m-mouth-surprise" cx="361" cy="416" r="0" fill="#4a2e1c" stroke="none" />
           </g>
+          {/* Unread-news badge -- floats above the sprout until the first
+              hover, see alertSeen/handleMouseEnter above. */}
+          {!alertSeen && (
+            <g className="mascot-alert">
+              <circle cx="430" cy="150" r="15" fill="#d64545" stroke="#f9f4ed" strokeWidth="2" />
+              <text x="430" y="156" textAnchor="middle" fontSize="19" fontWeight="700" fontFamily="var(--font-heading), sans-serif" fill="#f9f4ed">!</text>
+            </g>
+          )}
         </g>
         </svg>
       </div>

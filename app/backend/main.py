@@ -388,7 +388,7 @@ def me(authorization: Annotated[Optional[str], Header()] = None):
 @app.get("/api/health")
 def health():
     n, last_recv = db.execute("SELECT COUNT(*), MAX(recv_ts) FROM batch").fetchone()
-    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
+    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch WHERE node_id IS NOT NULL")]
     return {"ok": True, "batches": n, "last_recv": last_recv, "devices": devices}
 
 
@@ -411,19 +411,20 @@ def network():
     # autoincrement PK. NULL node_ids are excluded by the inner WHERE, so
     # they never form a group in the first place.
     rows = db.execute(
-        "SELECT node_id, device, recv_ts, mv FROM batch WHERE id IN ("
+        "SELECT node_id, device, recv_ts, mv, soil_mv FROM batch WHERE id IN ("
         "  SELECT MAX(id) FROM batch WHERE node_id IS NOT NULL GROUP BY node_id)"
         " ORDER BY node_id"
     ).fetchall()
     nodes = []
-    for node_id, device, recv_ts, mv_json in rows:
+    for node_id, device, recv_ts, mv_json, soil_mv in rows:
         # mv[] is already baseline-subtracted deviation (firmware's
         # cond.deviation()), so the largest magnitude in the latest batch is
         # directly "how far from resting, right now" -- no extra math needed.
         mv = json.loads(mv_json)
         activity = max((abs(v) for v in mv), default=0.0)
         nodes.append({"node_id": node_id, "device": device,
-                      "last_recv": recv_ts, "activity": round(activity, 3)})
+                      "last_recv": recv_ts, "activity": round(activity, 3),
+                      "soil_mv": soil_mv})
     density = min(1.0, len(nodes) / NETWORK_TARGET_DEVICES)
     return {"density": density, "nodes": nodes}
 
