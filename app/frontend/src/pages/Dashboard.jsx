@@ -31,6 +31,60 @@ const SITE_POSITIONS = (() => {
   return Array.from({ length: MAX_NODES }, () => ({ x: 40 + rand() * 520, y: 30 + rand() * 240 }));
 })();
 
+// Andrew's monotone chain -- returns hull vertices in CCW order. Fewer than
+// 3 points can't form a 2D hull, so they're returned unchanged.
+function convexHull(points) {
+  if (points.length < 3) return points;
+  const pts = [...points].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+// True AREA centroid of the hull polygon (shoelace formula), not a plain
+// vertex average -- an average skews toward whichever side of the hull has
+// more/closer-together points. Falls back to a coordinate average for <3
+// points or a degenerate/collinear (zero-area) hull, where the area-weighted
+// formula would divide by ~0.
+function polygonCentroid(hull) {
+  if (hull.length < 3) {
+    const n = hull.length;
+    return {
+      x: hull.reduce((s, p) => s + p.x, 0) / n,
+      y: hull.reduce((s, p) => s + p.y, 0) / n,
+    };
+  }
+  let area = 0, cx = 0, cy = 0;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    const cross = a.x * b.y - b.x * a.y;
+    area += cross;
+    cx += (a.x + b.x) * cross;
+    cy += (a.y + b.y) * cross;
+  }
+  area /= 2;
+  if (Math.abs(area) < 1e-6) {
+    const n = hull.length;
+    return {
+      x: hull.reduce((s, p) => s + p.x, 0) / n,
+      y: hull.reduce((s, p) => s + p.y, 0) / n,
+    };
+  }
+  return { x: cx / (6 * area), y: cy / (6 * area) };
+}
+
 function buildSiteGraph(realNodes) {
   const nodes = realNodes.slice(0, MAX_NODES).map((n, i) => ({
     ...SITE_POSITIONS[i], id: n.device, activity: n.activity || 0
@@ -49,7 +103,8 @@ function buildSiteGraph(realNodes) {
         if (!seen.has(key)) { seen.add(key); links.push({ a: i, b: j, activity: (nodes[i].activity + nodes[j].activity) / 2 }); }
       });
   });
-  return { nodes, links };
+  const moistureCenter = nodes.length ? polygonCentroid(convexHull(nodes)) : { x: 300, y: 150 };
+  return { nodes, links, moistureCenter };
 }
 // mV that counts as "fully lit" -- a tuned display heuristic, not a
 // calibrated threshold; revisit against real VP amplitudes once more devices
@@ -437,7 +492,7 @@ export default function Dashboard() {
                       </radialGradient>
                     </defs>
                     {wetFrac != null && (
-                      <circle cx="300" cy="150" r={20 + wetFrac * 210} fill="url(#moistureGlow)" />
+                      <circle cx={graph.moistureCenter.x} cy={graph.moistureCenter.y} r={20 + wetFrac * 210} fill="url(#moistureGlow)" />
                     )}
                     {graph.links.map((l, i) => {
                       const glow = Math.min(1, l.activity / FULL_GLOW_MV);
