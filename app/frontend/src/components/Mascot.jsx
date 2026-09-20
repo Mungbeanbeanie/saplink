@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNews } from '../lib/news.js';
+import mascotAlertSprite from '../assets/mascot-alert.png';
 
 // The Saplink mascot: a sprouting seed, sitting bottom-right of each page.
 // Artwork inlined verbatim from media/saplink-mascot/saplink-mascot.svg (idle,
@@ -288,10 +289,7 @@ export default function Mascot() {
           {/* Unread-news badge -- floats above the sprout until the first
               hover, see alertSeen/handleMouseEnter above. */}
           {!alertSeen && (
-            <g className="mascot-alert">
-              <circle cx="430" cy="150" r="15" fill="#d64545" stroke="#f9f4ed" strokeWidth="2" />
-              <text x="430" y="156" textAnchor="middle" fontSize="19" fontWeight="700" fontFamily="var(--font-heading), sans-serif" fill="#f9f4ed">!</text>
-            </g>
+            <image className="mascot-alert" href={mascotAlertSprite} x="419" y="130" width="22" height="40" />
           )}
         </g>
         </svg>
