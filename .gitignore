@@ -17,9 +17,7 @@ secrets.h
 *.db-wal
 *.db-shm
 
-app/frontend/package-lock.json
-
 # stray root-level npm artifact -- there is no root package.json; the only
-# npm project is app/frontend/
+# npm project is app/frontend/, whose lockfile IS committed.
 /package-lock.json
 /node_modules

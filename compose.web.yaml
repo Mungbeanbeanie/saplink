@@ -10,8 +10,9 @@ services:
     environment:
       VITE_API_BASE_URL: https://api.${SAPLINK_WEB_DOMAIN:?set SAPLINK_WEB_DOMAIN in .env}
       VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-    # `npm ci` needs a lockfile; fall back to install until one is committed.
-    command: sh -c "npm ci || npm install && npm run build"
+    # `npm ci` installs the committed lockfile exactly, and fails loudly if it
+    # is missing or out of sync with package.json -- which is the check we want.
+    command: sh -c "npm ci && npm run build"
     restart: "no"
 
   caddy:
@@ -19,7 +20,6 @@ services:
     ports: ["80:80", "443:443"]
     volumes:
       - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
-      - ./app/frontend/dist:/srv:ro
       - ./app/frontend/dist:/srv:ro
       - caddy-data:/data
       - caddy-config:/config
