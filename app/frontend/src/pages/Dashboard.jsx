@@ -162,6 +162,24 @@ export default function Dashboard() {
   const { signedIn, token } = useAuth();
   const network = useNetwork();
   const graph = useMemo(() => buildSiteGraph(network.nodes), [network.nodes]);
+  // Across every real reporting probe right now, not just the selected tab --
+  // built to generalize as more probes join, not just today's two. avgWetFrac
+  // averages each node's OWN wetness fraction (its own dry/wet calibration),
+  // not raw mV, since sense-1/sense-2 aren't on the same scale.
+  const soilStats = useMemo(() => {
+    const readings = network.nodes
+      .filter((n) => n.soil_mv != null)
+      .map((n) => ({ mv: n.soil_mv, wetFrac: wetFraction(n.device, n.soil_mv) }));
+    if (!readings.length) return null;
+    const mvs = readings.map((r) => r.mv);
+    const fracs = readings.map((r) => r.wetFrac).filter((f) => f != null);
+    return {
+      min: Math.min(...mvs),
+      max: Math.max(...mvs),
+      avgMv: mvs.reduce((a, b) => a + b, 0) / mvs.length,
+      avgWetFrac: fracs.length ? fracs.reduce((a, b) => a + b, 0) / fracs.length : null,
+    };
+  }, [network.nodes]);
   const [searchParams] = useSearchParams();
   // Arriving from Account's "View" button (?device=sense-2) pre-selects that
   // router's tab. There's no fixed device roster to validate against
@@ -181,19 +199,16 @@ export default function Dashboard() {
   const [replayNote, setReplayNote] = useState('');
   const [exportNote, setExportNote] = useState('');
   const [exportKind, setExportKind] = useState('csv');
-  const [soilMv, setSoilMv] = useState(null);
-  const wetFrac = useMemo(() => wetFraction(device, soilMv), [device, soilMv]);
   const lastId = useRef(0);
 
   // Readings: the API when it answers, a labelled preview feed when it does not.
   // Keyed on `device` (the backend now supports ?device= filtering) so
   // switching tabs restarts cleanly for the new router instead of mixing in
-  // whichever device's batch last arrived -- lastId/samples/soilMv all reset,
+  // whichever device's batch last arrived -- lastId/samples all reset,
   // since they're otherwise stale state from the previous tab.
   useEffect(() => {
     lastId.current = 0;
     setSamples([]);
-    setSoilMv(null);
     // The wire shape is the real backend's (app/backend/main.py): { last_id,
     // samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src,
     // soil_mv, seq }] }. t_ms is the router's millis() clock, not a wall-clock
@@ -208,7 +223,6 @@ export default function Dashboard() {
       setLive(true);
       setBaseline(last.baseline_mv != null ? last.baseline_mv : 42);
       setSrc(last.src || 'sim');
-      if (last.soil_mv != null) setSoilMv(last.soil_mv);
       if (last.event === 'spike') setSpike({ mv: last.mv, threshold: undefined, t: now });
       setSamples((prev) => prev.concat(rows.map((r) => ({ t: now, mv: r.mv, event: r.event, seq: r.seq }))).slice(-180));
     };
@@ -493,10 +507,13 @@ export default function Dashboard() {
           <div className="card elev-md" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 18px')}>
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="The Site" /></h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}><FadeWords delayOffset={40} text="A schematic diagram of every real router on the network and how active each one is right now. Positions are not GPS/site placement but generalized locations compared to other routers. The blue glow shows how wet the soil is for the region (smaller is drier, larger is wetter)." /></p>
+                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="The site" /></h2>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}><FadeWords delayOffset={40} text="A schematic diagram of every real router on the network and how active each one is right now — positions here are just layout, not GPS/site placement (no location data exists for them yet). The blue glow shows how wet the soil is, averaged across every reporting probe." /></p>
               </div>
-              <span className="tag tag-outline" style={css('border-radius: 999px')}>Soil moisture: {soilMv != null ? soilMv.toFixed(0) + ' mV (raw)' : '—'}</span>
+              <div className="flex flex-wrap gap-2">
+                <span className="tag tag-outline" style={css('border-radius: 999px; color: #14395e; border-color: #14395e')}>Range: {soilStats ? soilStats.min.toFixed(0) + '–' + soilStats.max.toFixed(0) + ' mV (raw)' : '—'}</span>
+                <span className="tag tag-outline" style={css('border-radius: 999px; color: #14395e; border-color: #14395e')}>Average: {soilStats ? soilStats.avgMv.toFixed(0) + ' mV (raw)' : '—'}</span>
+              </div>
             </div>
             {graph.nodes.length ? (
               <>
@@ -509,8 +526,8 @@ export default function Dashboard() {
                         <stop offset="100%" stopColor="#2f6fa8" stopOpacity="0" />
                       </radialGradient>
                     </defs>
-                    {wetFrac != null && (
-                      <circle cx={graph.moistureCenter.x} cy={graph.moistureCenter.y} r={20 + wetFrac * 210} fill="url(#moistureGlow)" />
+                    {soilStats?.avgWetFrac != null && (
+                      <circle cx={graph.moistureCenter.x} cy={graph.moistureCenter.y} r={20 + soilStats.avgWetFrac * 210} fill="url(#moistureGlow)" />
                     )}
                     {graph.links.map((l, i) => {
                       const glow = Math.min(1, l.activity / FULL_GLOW_MV);
