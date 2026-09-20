@@ -51,9 +51,9 @@ local dev simulator answer the same shape:
 
 `GET /api/health` → `{ ok, batches, last_recv, devices }`
 `GET /api/readings/latest` → `{ last_id, sample }`
-`GET /api/readings/history?since_id=` → `{ last_id, samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src, soil_mv, seq }] }`
+`GET /api/readings/history?since_id=&device=` → `{ last_id, samples: [{ batch_id, device, t_ms, mv, baseline_mv, event, src, soil_mv, seq }] }` — `device` is optional; omit it for every stream, pass one to read a single plant. One board posts a stream per plant, so unfiltered output interleaves them.
 `GET /api/news?limit=` → `{ items: [{ id, source, title, link, summary, published_ts }] }` (real backend only, no dev-simulator fake — read-only and public either way)
-`GET /api/network` → `{ density, nodes: [{ device, activity }] }` — real per-device activity driving the dashboard's site map and router-activity list
+`GET /api/network` → `{ density, nodes: [{ node_id, device, last_recv, activity }] }` — one node per **electrode pair**, keyed on `node_id`, not per `device`. Two plants on one board are two nodes; a batch posted without a `node_id` (a curl one-liner) is data, not a router, and never appears here. Drives the site map and router-activity list.
 `GET /api/auth/me` (with `Authorization: Bearer <google id token>`) → `{ email }`
 
 `t_ms` is the router's own `millis()` clock, not wall-clock time — the dashboard stamps

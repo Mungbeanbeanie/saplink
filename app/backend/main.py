@@ -71,7 +71,8 @@ db.execute(
 # These arrived after the first deployments, and CREATE TABLE IF NOT EXISTS
 # will not add a column to a table that already exists -- so an existing
 # saplink.db needs these or every insert fails on an unknown column.
-for _col in ("soil_mv INTEGER", "replay INTEGER", "raw_mv TEXT"):
+for _col in ("soil_mv INTEGER", "replay INTEGER", "raw_mv TEXT",
+             "node_id INTEGER"):
     try:
         db.execute(f"ALTER TABLE batch ADD COLUMN {_col}")
     except sqlite3.OperationalError:
@@ -86,6 +87,17 @@ class Batch(BaseModel):
     """The frozen wire format. Changing this breaks the firmware -- don't."""
 
     device: str = Field(max_length=32)
+    # Which ELECTRODE PAIR produced this waveform -- 1 = ADS1115 A2-A3, 2 =
+    # A0-A1. The same ORIGIN space AlertIn.node_id uses, so a batch and the
+    # alert it triggered name the same thing.
+    #
+    # This, not `device`, is what /api/network counts as a node. `device` is a
+    # free-text label a curl one-liner can invent; a node_id means a pair of
+    # electrodes is physically in a plant. The soil probe that rides along on
+    # the same batch is more data ABOUT this node, never a node of its own.
+    # Optional so batches predating the column, and hand-rolled test posts,
+    # still ingest -- they just are not nodes.
+    node_id: Optional[int] = Field(default=None, ge=0, le=255)
     seq: int = Field(ge=0)          # monotonic per boot; gaps mean dropped batches
     t_ms: int = Field(ge=0)         # millis() at the FIRST sample
     period_ms: int = Field(ge=1, le=60_000)
@@ -208,10 +220,10 @@ def ingest(b: Batch, authorization: Annotated[Optional[str], Header()] = None):
     _auth(authorization)
     cur = db.execute(
         "INSERT INTO batch(recv_ts,device,seq,t_ms,period_ms,baseline_mv,event,src,mv,"
-        "soil_mv,replay,raw_mv) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "soil_mv,replay,raw_mv,node_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (time.time(), b.device, b.seq, b.t_ms, b.period_ms, b.baseline_mv,
          b.event, b.src, json.dumps(b.mv), b.soil_mv, int(b.replay),
-         json.dumps(b.raw_mv) if b.raw_mv is not None else None),
+         json.dumps(b.raw_mv) if b.raw_mv is not None else None, b.node_id),
     )
     db.commit()
     return {"id": cur.lastrowid, "n": len(b.mv)}
@@ -384,24 +396,33 @@ def network():
     dashboard's site map. Public, like /api/health -- a read path must never
     be gated. The map does NOT render one node per real device (see
     NETWORK_TARGET_DEVICES above and plan.md's Phase 6 note) -- this just
-    hands the frontend real numbers to size and light that graph with."""
-    devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM batch")]
+    hands the frontend real numbers to size and light that graph with.
+
+    One node per ELECTRODE PAIR, keyed on Batch.node_id, NOT per `device`.
+    Two plants on one ESP32 are two nodes because they are two pairs of
+    electrodes in two plants; the soil probe riding along on each batch is
+    more data about its node, not another node. A batch with no node_id --
+    a curl one-liner, anything predating the column -- is not a sensing node
+    and stays off the map, which is what stopped `curl` rendering as a
+    router."""
+    # One row per node: MAX(id) is the newest batch because id is the
+    # autoincrement PK. NULL node_ids are excluded by the inner WHERE, so
+    # they never form a group in the first place.
+    rows = db.execute(
+        "SELECT node_id, device, recv_ts, mv FROM batch WHERE id IN ("
+        "  SELECT MAX(id) FROM batch WHERE node_id IS NOT NULL GROUP BY node_id)"
+        " ORDER BY node_id"
+    ).fetchall()
     nodes = []
-    for d in devices:
-        row = db.execute(
-            "SELECT recv_ts, mv FROM batch WHERE device=? ORDER BY id DESC LIMIT 1",
-            (d,),
-        ).fetchone()
-        if row is None:
-            continue
-        recv_ts, mv_json = row
+    for node_id, device, recv_ts, mv_json in rows:
         # mv[] is already baseline-subtracted deviation (firmware's
         # cond.deviation()), so the largest magnitude in the latest batch is
         # directly "how far from resting, right now" -- no extra math needed.
         mv = json.loads(mv_json)
         activity = max((abs(v) for v in mv), default=0.0)
-        nodes.append({"device": d, "last_recv": recv_ts, "activity": round(activity, 3)})
-    density = min(1.0, len(devices) / NETWORK_TARGET_DEVICES)
+        nodes.append({"node_id": node_id, "device": device,
+                      "last_recv": recv_ts, "activity": round(activity, 3)})
+    density = min(1.0, len(nodes) / NETWORK_TARGET_DEVICES)
     return {"density": density, "nodes": nodes}
 
 

@@ -234,6 +234,39 @@ def test_device_filter_splits_the_two_plants():
                  ).json()["samples"] == []
 
 
+def test_network_nodes_are_electrode_pairs_not_devices():
+    # A node is a PAIR OF ELECTRODES in a plant, named by node_id. Both plants
+    # count even though they share one ESP32 -- two pairs, two nodes -- and
+    # soil_mv rides along as data about a node rather than becoming one.
+    c.post("/api/readings", json=batch(seq=40, device="sense-1", node_id=1,
+                                       mv=[1.0], soil_mv=2000), headers=AUTH)
+    c.post("/api/readings", json=batch(seq=40, device="sense-2", node_id=2,
+                                       mv=[-9.0], soil_mv=1700), headers=AUTH)
+    # A post with no node_id is data, not hardware. This is the `curl` row
+    # that was rendering as a router on the site map.
+    c.post("/api/readings", json=batch(seq=40, device="curl", mv=[2.0]), headers=AUTH)
+
+    body = c.get("/api/network").json()
+    nodes = body["nodes"]
+    assert [n["node_id"] for n in nodes] == [1, 2], nodes
+    assert [n["device"] for n in nodes] == ["sense-1", "sense-2"], nodes
+    assert nodes[1]["activity"] == 9.0, nodes
+    # density counts nodes, so a stray curl post cannot inflate it
+    assert body["density"] == 2 / 8, body
+
+    # ...but curl and sense-2 stay DEVICES: that list feeds the plant tab bar,
+    # and filtering it here would take plant 2 off the dashboard entirely.
+    assert "sense-2" in c.get("/api/health").json()["devices"]
+
+
+def test_node_id_optional():
+    # Firmware built before node_id existed must keep ingesting -- same reason
+    # soil_mv is optional. Every other test posts without it.
+    assert c.post("/api/readings", json=batch(seq=41), headers=AUTH).status_code == 200
+    assert c.post("/api/readings", json=batch(seq=41, node_id=999),
+                  headers=AUTH).status_code == 422
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

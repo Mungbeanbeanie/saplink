@@ -115,7 +115,12 @@ struct Plant {
   // string: same schema, same table, two streams, no migration. The board
   // posts one batch per plant per cycle and the backend already keys on it.
   const char *device;
-  uint8_t node_id;     // Contract B's ORIGIN -- who raised it, not who acts.
+  // ORIGIN, on BOTH contracts: the alert's "who raised it, not who acts", and
+  // the batch's "which electrode pair produced this waveform". One number in
+  // both so an alert and the batch that triggered it name the same node. This
+  // -- not device -- is what the backend's site map counts as a router; the
+  // soil probe below is data about this node, never a node of its own.
+  uint8_t node_id;
   // The ADS1115 offers only A0-A1 and A2-A3 as differential pairs, so a bool
   // covers the entire space and there is nothing to generalise. false = A2-A3,
   // the pair probe_main.cpp characterised.
@@ -300,11 +305,18 @@ static void post(const Plant &p, uint32_t batch_seq, const Snapshot &s,
   // case. It would fit, but with no margin, and the guard below drops the whole
   // batch rather than truncating -- an overflow costs the event, not a field.
   char body[2048];
+  // node_id ships alongside device on purpose: device is the free-text stream
+  // label the dashboard filters its chart by, node_id is WHICH ELECTRODE PAIR
+  // this waveform came out of. The backend's site map counts nodes off the
+  // latter, so a batch without it is data and not a router -- which is what
+  // keeps hand-rolled curl posts from drawing hardware that isn't there.
   int n = snprintf(body, sizeof body,
-                   "{\"device\":\"%s\",\"seq\":%lu,\"t_ms\":%lu,\"period_ms\":%lu,"
+                   "{\"device\":\"%s\",\"node_id\":%u,\"seq\":%lu,\"t_ms\":%lu,"
+                   "\"period_ms\":%lu,"
                    "\"baseline_mv\":%.3f,\"event\":%s,\"src\":\"%s\","
                    "\"soil_mv\":%lu,\"replay\":%s,\"mv\":[",
-                   p.device, (unsigned long)batch_seq, (unsigned long)s.t_ms,
+                   p.device, (unsigned)p.node_id, (unsigned long)batch_seq,
+                   (unsigned long)s.t_ms,
                    (unsigned long)PERIOD_MS, s.baseline_mv,
                    spike ? "\"spike\"" : "null", SRC,
                    (unsigned long)s.soil_mv, s.replayed ? "true" : "false");
