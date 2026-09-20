@@ -265,8 +265,12 @@ export default function Dashboard() {
     const mvs = s.map((x) => x.mv);
     // Never rises above 0 -- the 0 mV line should always be on the chart,
     // not just implied, even though readings themselves stay well clear of it.
-    const lo = Math.min(0, mvs.length ? Math.min(Math.min(...mvs), baseline) - 6 : 0);
-    const hi = mvs.length ? Math.max(Math.max(...mvs), baseline) + 6 : 100;
+    // `baseline` (the electrode's absolute standing potential) is NOT folded
+    // in here -- mv[] is already a baseline-subtracted deviation (mean ~0 by
+    // construction), a different scale entirely, so mixing the two stretched
+    // the axis and made the resting line render nowhere near the signal.
+    const lo = Math.min(0, mvs.length ? Math.min(...mvs) - 6 : 0);
+    const hi = mvs.length ? Math.max(...mvs) + 6 : 100;
     const W = 900, H = 280;
     const X = (i) => (s.length < 2 ? 0 : (i / (s.length - 1)) * W);
     const Y = (val) => H - ((val - lo) / (hi - lo)) * H;
@@ -295,11 +299,10 @@ export default function Dashboard() {
       s, lo, hi, H, W, linePath, gridLines,
       areaPath: s.length ? linePath + 'L' + W + ' ' + H + 'L0 ' + H + 'Z' : '',
       spikePath: spikeSeg.join(' '),
-      baselineY: Y(baseline).toFixed(1),
       seqs, dropped, completeness,
       current: s.length ? s[s.length - 1].mv : null
     };
-  }, [samples, baseline]);
+  }, [samples]);
 
   // Real devices only -- from /api/health, not a fixed fake fleet. Falls
   // back to just the currently-selected id before the first health poll
@@ -419,7 +422,12 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-start justify-between gap-3.5" style={css('margin-bottom: 20px; padding-top: 32px')}>
               <div>
                 <h2 className="card-title" style={css('margin: 0; font-size: 26px')}><FadeWords text="Electrical activity" /></h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="The green line is the plant’s signal strength in millivolts. The dashed line is its normal resting level — movement away from it means conditions around the plant have changed." /></p>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="The line shows the plant’s signal strength in millivolts, already measured relative to its own resting point." /></p>
+                <div className="flex flex-wrap items-center gap-3" style={css('margin-top: 8px; font-size: 12px; color: var(--color-neutral-700)')}>
+                  <span className="flex items-center gap-1.5"><span style={{ width: 18, height: 3, borderRadius: 2, background: '#c2477a', display: 'inline-block' }} />Signal (mV, relative to resting)</span>
+                  <span className="flex items-center gap-1.5"><span style={{ width: 18, height: 3, borderRadius: 2, background: '#9c1f56', display: 'inline-block' }} />Signal spike</span>
+                  <span className="flex items-center gap-1.5"><span style={{ width: 18, height: 0, borderTop: '2px dashed #c2477a', display: 'inline-block' }} />Resting level (0 mV)</span>
+                </div>
               </div>
               <div className="flex flex-col items-end gap-2.5">
                 <div className="flex items-center gap-2.5" style={css('position: absolute; top: 22px; right: 18px')}>
@@ -432,7 +440,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2.5">
                 <span className="tag" style={{ borderRadius: 999, background: isSim ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)', color: isSim ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)' }}>{isSim ? 'Simulated data — no plant connected' : 'Live plant — real sensor'}</span>
-                <span className="tag tag-neutral" style={css('border-radius: 999px')}>resting level {baseline.toFixed(1)} mV</span>
+                <span className="tag tag-neutral" style={css('border-radius: 999px')}>electrode baseline {baseline.toFixed(1)} mV</span>
                 <span className="tag tag-neutral" style={css('border-radius: 999px')}>right now {v.current == null ? '—' : v.current.toFixed(1)} mV</span>
                 </div>
               </div>
@@ -454,12 +462,15 @@ export default function Dashboard() {
                 ) : (
                 <svg viewBox="0 0 900 280" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
                   {v.gridLines.map((g) => (
-                    <line key={g.value} x1="0" y1={g.y} x2="900" y2={g.y} stroke="#9a9081" strokeWidth={g.value === 0 ? 2 : 1} opacity={g.value === 0 ? 0.6 : 0.18} />
+                    <line key={g.value} x1="0" y1={g.y} x2="900" y2={g.y}
+                      stroke={g.value === 0 ? '#c2477a' : '#9a9081'}
+                      strokeWidth={g.value === 0 ? 2 : 1}
+                      strokeDasharray={g.value === 0 ? '7 7' : undefined}
+                      opacity={g.value === 0 ? 0.85 : 0.18} />
                   ))}
-                  <line x1="0" y1={v.baselineY} x2="900" y2={v.baselineY} stroke="#9a9081" strokeWidth="1.5" strokeDasharray="7 7" />
-                  <path d={v.areaPath} fill="color-mix(in srgb, #7a8a5e 22%, transparent)" />
-                  <path d={v.linePath} fill="none" stroke="#56633f" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-                  <path d={v.spikePath} fill="none" stroke="#c67139" strokeWidth="3" strokeLinejoin="round" />
+                  <path d={v.areaPath} fill="color-mix(in srgb, #c2477a 18%, transparent)" />
+                  <path d={v.linePath} fill="none" stroke="#c2477a" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                  <path d={v.spikePath} fill="none" stroke="#9c1f56" strokeWidth="3" strokeLinejoin="round" />
                 </svg>
                 )}
               </div>
