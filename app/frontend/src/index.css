@@ -14,6 +14,18 @@ a:hover { color: var(--color-accent-800); }
 @keyframes stumpPhase { 0%, 74% { opacity: 0; } 81% { opacity: 1; } 92% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes flow { to { stroke-dashoffset: -44; } }
 @keyframes pulseDot { from { opacity: 1; transform: scale(1); } to { opacity: .35; transform: scale(.82); } }
+@keyframes fadeUpIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Entrance for a page's own text on first load/reload (not the landing page,
+   which already has BranchScene's fade-in) -- signals the page settling in
+   rather than the words just being there instantly. animation-delay is set
+   per element inline to stagger a few in a row. */
+.fade-up { animation: fadeUpIn .6s ease both; }
+/* Per-word spans (src/components/FadeWords.jsx) need inline-block -- a plain
+   inline element can't be transformed, so translateY in the keyframes above
+   would silently no-op on a bare <span>. */
+.fade-word { display: inline-block; }
+@media (prefers-reduced-motion: reduce) { .fade-up { animation: none; } }
 
 /* Intro loader: the growing-branch scene (src/components/IntroLoader.jsx). */
 .loader { position: fixed; inset: 0; z-index: 1000; background: #F1E5D6; overflow: hidden; transition: opacity .7s ease; }

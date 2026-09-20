@@ -4,6 +4,7 @@ import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import Footer from '../components/Footer.jsx';
 import Mascot from '../components/Mascot.jsx';
+import FadeWords from '../components/FadeWords.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { apiFetch } from '../lib/api.js';
@@ -250,10 +251,10 @@ export default function Dashboard() {
 
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="card-kicker" style={css('margin-bottom: 6px')}>Live monitoring</div>
-            <h1 style={css('margin: 0; font-size: clamp(30px, 4vw, 50px); line-height: 1.05')}>What the plant is signalling</h1>
+            <div className="card-kicker" style={css('margin-bottom: 6px')}><FadeWords text="Live monitoring" /></div>
+            <h1 style={css('margin: 0; font-size: clamp(30px, 4vw, 50px); line-height: 1.05')}><FadeWords text="What the plant is signalling" delayOffset={70} /></h1>
             <p style={css('margin: 10px 0 0; max-width: 60ch; font-size: 15px; line-height: 1.6; color: var(--color-neutral-700)')}>
-              Every plant on the network has its own router. Plants change their electrical activity as conditions change — more water, more light, a wound, a dry spell — and when that activity moves clear of the plant’s resting level the router puts it on the network, reaching this page within seconds.
+              <FadeWords delayOffset={220} text="Every plant on the network has its own router. Plants change their electrical activity as conditions change — more water, more light, a wound, a dry spell — and when that activity moves clear of the plant’s resting level the router puts it on the network, reaching this page within seconds." />
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -322,8 +323,8 @@ export default function Dashboard() {
           <div className="card elev-md" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px clamp(18px, 2.5vw, 30px)')}>
             <div className="flex flex-wrap items-center justify-between gap-3.5" style={css('margin-bottom: 20px')}>
               <div>
-                <h2 className="card-title" style={css('margin: 0; font-size: 26px')}>Electrical activity</h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>The green line is the plant’s signal strength in millivolts. The dashed line is its normal resting level — movement away from it means conditions around the plant have changed.</p>
+                <h2 className="card-title" style={css('margin: 0; font-size: 26px')}><FadeWords text="Electrical activity" /></h2>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="The green line is the plant’s signal strength in millivolts. The dashed line is its normal resting level — movement away from it means conditions around the plant have changed." /></p>
               </div>
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="tag" style={{ borderRadius: 999, background: isSim ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)', color: isSim ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)' }}>{isSim ? 'Simulated data — no plant connected' : 'Live plant — real sensor'}</span>
@@ -364,8 +365,8 @@ export default function Dashboard() {
           <div className="card elev-sm" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 14px')}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Status over time</h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>An hour-by-hour view of the last two days for {device}. Each block is one hour.</p>
+                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Status over time" /></h2>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text={'An hour-by-hour view of the last two days for ' + device + '. Each block is one hour.'} /></p>
               </div>
               <div className="flex items-center gap-3" style={css('font-size: 12px; color: var(--color-neutral-700)')}>
                 <span className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--color-accent-2-600)', display: 'inline-block' }} />Reporting</span>
@@ -397,8 +398,8 @@ export default function Dashboard() {
           <div className="card elev-md" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 18px')}>
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>The site</h2>
-                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}>A schematic diagram of every real router on the network and how active each one is right now — positions here are just layout, not GPS/site placement (no location data exists for them yet).</p>
+                <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="The site" /></h2>
+                <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px; max-width: 62ch')}><FadeWords delayOffset={40} text="A schematic diagram of every real router on the network and how active each one is right now — positions here are just layout, not GPS/site placement (no location data exists for them yet)." /></p>
               </div>
             </div>
             {graph.nodes.length ? (
@@ -452,8 +453,8 @@ export default function Dashboard() {
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
             <div>
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Conditions</h2>
-              <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>Each router measures these alongside the electrical signal, because weather shapes how a plant reacts.</p>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Conditions" /></h2>
+              <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="Each router measures these alongside the electrical signal, because weather shapes how a plant reacts." /></p>
             </div>
             <div style={css('flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px')}>
               <div style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
@@ -466,8 +467,8 @@ export default function Dashboard() {
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 14px')}>
             <div>
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Ecology news</h2>
-              <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}>Wider context from outside the network, refreshed from real ecology/environment sources.</p>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Ecology news" /></h2>
+              <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="Wider context from outside the network, refreshed from real ecology/environment sources." /></p>
             </div>
             {news.length ? (
               <ul style={css('display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none')}>
@@ -485,10 +486,10 @@ export default function Dashboard() {
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Router activity</h2>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Router activity" /></h2>
               <span className="tag tag-neutral" style={css('border-radius: 999px')}>{network.nodes.length} reporting</span>
             </div>
-            <p className="card-body" style={css('margin: 0; font-size: 14px')}>Each router's current electrical activity, in millivolts. A flat bar means a router has dropped off the network.</p>
+            <p className="card-body" style={css('margin: 0; font-size: 14px')}><FadeWords delayOffset={40} text="Each router's current electrical activity, in millivolts. A flat bar means a router has dropped off the network." /></p>
             {network.nodes.length ? (
               <div className="flex flex-col gap-3">
                 {network.nodes.map((n) => {
@@ -513,10 +514,10 @@ export default function Dashboard() {
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px')}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Download the data</h2>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Download the data" /></h2>
               <span className="tag tag-neutral" style={css('border-radius: 999px')}>{samples.length} readings</span>
             </div>
-            <p className="card-body" style={css('margin: 0; font-size: 14px')}>Take the readings currently loaded into a spreadsheet, or as raw JSON for analysis.</p>
+            <p className="card-body" style={css('margin: 0; font-size: 14px')}><FadeWords delayOffset={40} text="Take the readings currently loaded into a spreadsheet, or as raw JSON for analysis." /></p>
             <div className="flex flex-wrap gap-2.5">
               <button type="button" onClick={() => download('csv')} className="btn btn-primary" style={css('border-radius: 999px; padding: 12px 24px')}>CSV for spreadsheets</button>
               <button type="button" onClick={() => download('json')} className="btn btn-secondary" style={css('border-radius: 999px; padding: 12px 24px')}>JSON</button>
@@ -526,7 +527,7 @@ export default function Dashboard() {
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Router connection</h2>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Router connection" /></h2>
               <span style={css('display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-neutral-800)')}>
                 <span style={{ width: 9, height: 9, borderRadius: 999, background: online ? 'var(--color-accent-2-600)' : healthErr ? 'var(--color-accent-600)' : 'var(--color-neutral-400)' }} />
                 {online ? 'ok' : healthErr ? 'unreachable' : 'checking'}
@@ -546,10 +547,10 @@ export default function Dashboard() {
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 16px')}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}>Data completeness</h2>
+              <h2 className="card-title" style={css('margin: 0; font-size: 22px')}><FadeWords text="Data completeness" /></h2>
               <span className="tag" style={{ borderRadius: 999, background: gapBg, color: gapFg }}>{v.dropped ? v.seqs.length + ' of ' + (v.seqs.length + v.dropped) + ' arrived' : 'all arrived'}</span>
             </div>
-            <p className="card-body" style={css('margin: 0; font-size: 14px')}>Each bar is a batch of readings. Orange bars mark readings that never arrived, so a quiet patch in the chart is never mistaken for a quiet plant.</p>
+            <p className="card-body" style={css('margin: 0; font-size: 14px')}><FadeWords delayOffset={40} text="Each bar is a batch of readings. Orange bars mark readings that never arrived, so a quiet patch in the chart is never mistaken for a quiet plant." /></p>
             <div className="flex items-end" style={css('gap: 3px; height: 46px')}>
               {v.seqs.slice(-40).map((val, i, a) => {
                 const gap = i > 0 && val - a[i - 1] > 1;

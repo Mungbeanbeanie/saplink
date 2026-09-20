@@ -4,6 +4,7 @@ import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import Footer from '../components/Footer.jsx';
 import Mascot from '../components/Mascot.jsx';
+import FadeWords from '../components/FadeWords.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
 import { useHealth } from '../lib/useHealth.js';
@@ -24,9 +25,9 @@ export default function Account() {
       <div style={css('min-height: 100vh; background: var(--color-bg)')}>
         <Header />
         <main style={css('padding: clamp(20px, 3vw, 40px) clamp(20px, 5vw, 64px) 80px; display: flex; flex-direction: column; gap: 18px; max-width: 640px')}>
-          <div className="card-kicker" style={css('margin-bottom: 6px')}>Account</div>
-          <h1 style={css('margin: 0; font-size: clamp(26px, 3vw, 36px)')}>Sign in to see your account</h1>
-          <p style={css('margin: 0; color: var(--color-neutral-700)')}>Anyone can view the readings; signing in with Google lets you send a test signal and see every router on the network here.</p>
+          <div className="card-kicker" style={css('margin-bottom: 6px')}><FadeWords text="Account" /></div>
+          <h1 style={css('margin: 0; font-size: clamp(26px, 3vw, 36px)')}><FadeWords text="Sign in to see your account" delayOffset={70} /></h1>
+          <p style={css('margin: 0; color: var(--color-neutral-700)')}><FadeWords delayOffset={200} text="Anyone can view the readings; signing in with Google lets you send a test signal and see every router on the network here." /></p>
           <GoogleSignInButton size="large" shape="pill" />
         </main>
         <Mascot />
@@ -41,21 +42,21 @@ export default function Account() {
     <div style={css('min-height: 100vh; background: var(--color-bg)')}>
       <Header />
       <main style={css('padding: clamp(20px, 3vw, 40px) clamp(20px, 5vw, 64px) 80px; display: flex; flex-direction: column; gap: 26px; max-width: 1040px')}>
-        <div><div className="card-kicker" style={css('margin-bottom: 6px')}>Account</div></div>
+        <div><div className="card-kicker" style={css('margin-bottom: 6px')}><FadeWords text="Account" /></div></div>
 
         <div className="card elev-md" style={css('border-radius: var(--radius-lg); padding: clamp(20px, 2.4vw, 30px); display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: clamp(18px, 2.4vw, 30px)')}>
           <div style={css('display: flex; align-items: center; justify-content: center; width: 96px; height: 96px; border-radius: 999px; background: var(--color-accent-2-600); color: var(--color-neutral-100); font-family: var(--font-heading); font-size: 34px; box-shadow: var(--shadow-sm)')}>{initials}</div>
           <div style={css('flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px')}>
             <div style={css('font-family: var(--font-heading); font-size: 26px')}>{email}</div>
-            <div style={css('font-size: 15px; color: var(--color-neutral-700)')}>Signed in with Google</div>
+            <div style={css('font-size: 15px; color: var(--color-neutral-700)')}><FadeWords text="Signed in with Google" /></div>
           </div>
           <button type="button" onClick={() => { signOut(); navigate('/'); }} className="btn btn-secondary" style={css('border-radius: 999px; padding: 12px 24px')}>Sign out</button>
         </div>
 
         <div className="flex flex-wrap items-end justify-between gap-3.5">
           <div>
-            <h2 style={css('margin: 0; font-size: clamp(24px, 2.6vw, 34px)')}>Routers on the network</h2>
-            <p style={css('margin: 6px 0 0; font-size: 15px; color: var(--color-neutral-700); max-width: 56ch')}>Every router currently reporting in. Select one to open its dashboard.</p>
+            <h2 style={css('margin: 0; font-size: clamp(24px, 2.6vw, 34px)')}><FadeWords text="Routers on the network" delayOffset={70} /></h2>
+            <p style={css('margin: 6px 0 0; font-size: 15px; color: var(--color-neutral-700); max-width: 56ch')}><FadeWords delayOffset={200} text="Every router currently reporting in. Select one to open its dashboard." /></p>
           </div>
           <span className="tag tag-neutral" style={css('border-radius: 999px')}>{devices.length} reporting</span>
         </div>
