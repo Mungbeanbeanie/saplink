@@ -81,7 +81,7 @@ src/art/artwork.js                     (leaf — static SVG art strings)
 
 src/pages/Landing.jsx     --> src/components/Header.jsx, src/components/GoogleSignInButton.jsx, src/scene/BranchScene.jsx, src/lib/useHealth.js
 src/pages/HowItWorks.jsx --> src/components/Header.jsx   (static)
-src/pages/Dashboard.jsx  --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/{api,auth,news,network,statusHistory,weather}.js   (the only page hitting live readings: /api/health, /api/readings/history, /api/network, /api/status_history, /api/weather, /api/alerts/manual; also renders the news card. No longer depends on src/data/roster.js -- that fixture was dropped, device tabs now come from /api/health's real device list)
+src/pages/Dashboard.jsx  --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/{api,auth,news,network,statusHistory}.js   (the only page hitting live readings: /api/health, /api/readings/history?device=, /api/network, /api/status_history, /api/alerts/manual; also renders the news card. No longer depends on src/data/roster.js -- that fixture was dropped, device tabs now come from /api/health's real device list. Does NOT depend on src/lib/weather.js -- that hook exists and works but nothing currently renders it, see plan.md's Outdoor temperature note)
 src/pages/Account.jsx    --> src/components/{Header,GoogleSignInButton}.jsx, src/lib/auth.js, src/data/roster.js   (gates on signedIn)
 
 server/index.js            (leaf, LOCAL DEV ONLY — Express fake API for `npm run dev`, not part of deployment)

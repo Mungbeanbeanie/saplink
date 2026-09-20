@@ -23,16 +23,31 @@ import { useNews } from '../lib/news.js';
 // (index.css's .m-mouth, nested in the happy face) flaps open and closed
 // for the duration of the typing via the `.is-talking` class, then settles
 // back into the plain smile once the line's fully typed.
+//
+// It's also draggable (pointer events, captured on the svg so the drag
+// keeps tracking even once the cursor leaves it) -- a translate applied to
+// .mascot-stage, separate from .mascot's own sticky positioning, so the
+// drag is purely visual and the "can't overlap the footer" sticky
+// guarantee above is untouched. Letting go eases both the offset and a
+// "surprise" amount back to 0 every frame (same manual-lerp approach
+// BranchScene.jsx uses for its scroll parallax), where surprise is however
+// far it got dragged, clamped to 0..1 -- it directly drives the radius of
+// a dedicated mouth circle (m-mouth-surprise) that's capped well inside
+// the body ellipse's radius so the "shocked" mouth can never visually
+// spill outside the model no matter how far it's dragged.
 export default function Mascot() {
   const svgRef = useRef(null);
   const faceRef = useRef(null);
   const eyesRef = useRef(null);
   const blinkRef = useRef(null);
+  const stageRef = useRef(null);
+  const surpriseRef = useRef(null);
   const news = useNews(20);
   const lastArticleRef = useRef(null);
   const [article, setArticle] = useState(null);
   const [revealed, setRevealed] = useState('');
   const [talking, setTalking] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -142,16 +157,88 @@ export default function Mascot() {
   };
   const handleMouseLeave = () => setArticle(null);
 
+  // Drag state lives in a plain ref, not React state -- pointermove can fire
+  // far more often than a re-render should happen, so position/surprise are
+  // written straight to the DOM each frame (the same direct-style-mutation
+  // approach the eye-tracking above already uses), and `dragging` is the
+  // only piece that becomes React state, since it only flips twice per drag.
+  const MAX_DRAG_FOR_SURPRISE = 160; // px of drag distance at which surprise maxes out
+  const MAX_MOUTH_R = 28; // comfortably inside the body ellipse (rx 141, ry 113) at the mouth's position -- never spills past the model
+  const drag = useRef({ raf: null, pointerId: null, startX: 0, startY: 0, startOffX: 0, startOffY: 0, offX: 0, offY: 0, surprise: 0 }).current;
+
+  const applyDragVisuals = () => {
+    if (stageRef.current) stageRef.current.style.transform = 'translate(' + drag.offX.toFixed(1) + 'px,' + drag.offY.toFixed(1) + 'px)';
+    if (surpriseRef.current) surpriseRef.current.setAttribute('r', (drag.surprise * MAX_MOUTH_R).toFixed(1));
+  };
+
+  const handlePointerDown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    // Without this, a press-and-drag starting near the bubble's text
+    // sometimes reads to the browser as a text-selection drag instead of
+    // our custom one -- preventDefault on the down event is what actually
+    // stops that (pointer capture below only decides which element keeps
+    // receiving move/up events, it doesn't suppress native selection).
+    e.preventDefault();
+    if (drag.raf) { cancelAnimationFrame(drag.raf); drag.raf = null; }
+    drag.pointerId = e.pointerId;
+    drag.startX = e.clientX; drag.startY = e.clientY;
+    drag.startOffX = drag.offX; drag.startOffY = drag.offY;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const handlePointerMove = (e) => {
+    if (drag.pointerId == null) return;
+    drag.offX = drag.startOffX + (e.clientX - drag.startX);
+    drag.offY = drag.startOffY + (e.clientY - drag.startY);
+    drag.surprise = Math.min(1, Math.hypot(drag.offX, drag.offY) / MAX_DRAG_FOR_SURPRISE);
+    applyDragVisuals();
+  };
+  const handlePointerUp = () => {
+    if (drag.pointerId == null) return;
+    drag.pointerId = null;
+    setDragging(false);
+    // Eases the offset and the surprise amount back to 0 together, once
+    // released -- exponential decay toward 0 each frame until close enough
+    // to just snap the rest of the way.
+    const tick = () => {
+      drag.offX *= 0.78; drag.offY *= 0.78; drag.surprise *= 0.78;
+      if (Math.abs(drag.offX) < 0.5 && Math.abs(drag.offY) < 0.5 && drag.surprise < 0.01) {
+        drag.offX = 0; drag.offY = 0; drag.surprise = 0;
+        applyDragVisuals();
+        drag.raf = null;
+        return;
+      }
+      applyDragVisuals();
+      drag.raf = requestAnimationFrame(tick);
+    };
+    drag.raf = requestAnimationFrame(tick);
+  };
+
   return (
-    <div className={'mascot' + (talking ? ' is-talking' : '')} aria-hidden="true">
-      <div className="mascot-stage">
+    <div className={'mascot' + (talking ? ' is-talking' : '') + (dragging ? ' is-dragging' : '')} aria-hidden="true">
+      {/* Hover tracking lives on this whole stage, not just the svg -- the
+          bubble sits a real visual gap above the svg (see .mascot-bridge
+          below), and if only the svg fired enter/leave, crossing that gap on
+          the way up to the bubble would hit no pointer-events:auto element
+          at all, read as leaving the mascot entirely, and clear the article
+          before the bubble could ever be reached or clicked. */}
+      <div className="mascot-stage" ref={stageRef} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
         {article && (
-          article.link
-            ? <a className="mascot-bubble" href={article.link} target="_blank" rel="noreferrer">{revealed}{talking && <span className="mascot-caret" />}</a>
-            : <div className="mascot-bubble">{revealed}{talking && <span className="mascot-caret" />}</div>
+          <>
+            {/* Invisible strip spanning the gap between the svg's top and the
+                bubble's bottom edge (bottom: 100% + this same 14px) -- wider
+                than the svg itself since the bubble can be much wider and is
+                right-aligned, so it's the only thing keeping a diagonal move
+                toward the bubble's left side from falling into dead space. */}
+            <div className="mascot-bridge" />
+            {article.link
+              ? <a className="mascot-bubble" href={article.link} target="_blank" rel="noreferrer">{revealed}{talking && <span className="mascot-caret" />}</a>
+              : <div className="mascot-bubble">{revealed}{talking && <span className="mascot-caret" />}</div>}
+          </>
         )}
         <svg ref={svgRef} viewBox="200 140 320 420" width="78" height="102"
-          onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
         <ellipse className="m-shadow" cx="360" cy="541" rx="121" ry="11" fill="#e3d6c6" />
         <g className="m-body-g">
           {/* legs */}
@@ -189,6 +276,10 @@ export default function Mascot() {
                 <circle className="m-mouth-circle" cx="361" cy="417" r="8" fill="#4a2e1c" stroke="none" />
               </g>
             </g>
+            {/* Grows with how far the mascot's currently been dragged from its
+                resting spot (see handlePointerMove/handlePointerUp above) --
+                independent of hover/talking, so it works from either face. */}
+            <circle ref={surpriseRef} className="m-mouth-surprise" cx="361" cy="416" r="0" fill="#4a2e1c" stroke="none" />
           </g>
         </g>
         </svg>

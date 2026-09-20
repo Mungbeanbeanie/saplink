@@ -84,11 +84,32 @@ html.is-loading, html.is-loading body { overflow: hidden; }
   pointer-events: none;
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-neutral-900) 20%, transparent));
 }
-.mascot svg { display: block; overflow: visible; pointer-events: auto; }
+.mascot svg { display: block; overflow: visible; pointer-events: auto; cursor: grab; touch-action: none; }
+.mascot.is-dragging svg { cursor: grabbing; }
 /* Wraps the svg so the speech bubble (below) has something of the right
    size to position itself against -- inline-block shrink-wraps to the svg's
-   own dimensions, same footprint the svg had as the direct flex item before. */
-.mascot-stage { position: relative; display: inline-block; }
+   own dimensions, same footprint the svg had as the direct flex item before.
+   Also what the drag offset (src/components/Mascot.jsx) is translated on --
+   deliberately not .mascot itself, so dragging never touches its sticky
+   positioning or the footer-overlap guarantee that depends on it. */
+.mascot-stage {
+  position: relative; display: inline-block; will-change: transform;
+  /* Belt-and-suspenders alongside handlePointerDown's preventDefault
+     (src/components/Mascot.jsx) -- makes a selection-drag structurally
+     impossible here (nothing to select) rather than just prevented on the
+     down event, so a press starting on the bubble's own text can't select
+     it either. */
+  -webkit-user-select: none; user-select: none;
+}
+/* Bridges the visual gap between the svg's top edge and the bubble's bottom
+   edge (the bubble sits at bottom: calc(100% + 14px), so this matches that
+   same 14px) -- otherwise that gap is plain page background with nothing
+   pointer-events:auto in it, so moving the cursor from the mascot up to the
+   bubble crosses a dead zone that reads as leaving the mascot entirely.
+   Wider than the svg on both sides since the bubble can be up to 320px wide
+   and is right-aligned, so a diagonal move toward its left edge needs
+   somewhere to land too. */
+.mascot-bridge { position: absolute; left: -260px; right: -20px; bottom: 100%; height: 14px; pointer-events: auto; }
 .mascot-bubble {
   /* Landscape, not portrait: a wide min-width paired with a capped max-height
      (overflow hidden as the safety net for a title long enough to wrap past
