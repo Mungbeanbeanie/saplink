@@ -189,7 +189,7 @@ export default function Dashboard() {
   const spikeActive = !!spike && !acked;
   const isSim = src !== 'ads1115';
   const online = !!(health && health.ok);
-  const ago = health && health.last_recv ? Math.max(0, Math.round((Date.now() - health.last_recv) / 1000)) + 's ago' : '—';
+  const ago = fmtAgo(health && health.last_recv);
   const gapBg = v.dropped ? 'var(--color-accent-200)' : 'var(--color-accent-2-200)';
   const gapFg = v.dropped ? 'var(--color-accent-900)' : 'var(--color-accent-2-900)';
 
