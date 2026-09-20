@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import Footer from '../components/Footer.jsx';
 import Mascot from '../components/Mascot.jsx';
+import DashboardLink from '../components/DashboardLink.jsx';
 import FadeWords from '../components/FadeWords.jsx';
 import { css } from '../lib/css.js';
 
@@ -58,7 +59,7 @@ export default function HowItWorks() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Link to="/dashboard" className="btn btn-primary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>See it on the dashboard</Link>
+          <DashboardLink className="btn btn-primary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>See it on the dashboard</DashboardLink>
           <Link to="/" className="btn btn-secondary" style={css('border-radius: 999px; padding: 13px 26px; font-size: 16px')}>Back to overview</Link>
         </div>
 

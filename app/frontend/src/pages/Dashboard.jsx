@@ -4,6 +4,7 @@ import Header from '../components/Header.jsx';
 import GoogleSignInButton from '../components/GoogleSignInButton.jsx';
 import Footer from '../components/Footer.jsx';
 import Mascot from '../components/Mascot.jsx';
+import MascotSpinner from '../components/MascotSpinner.jsx';
 import FadeWords from '../components/FadeWords.jsx';
 import { css } from '../lib/css.js';
 import { useAuth } from '../lib/auth.js';
@@ -331,6 +332,9 @@ export default function Dashboard() {
                 ))}
               </div>
               <div style={css('flex: 1; min-width: 0; height: 280px; border-radius: var(--radius-lg); background: var(--color-neutral-200); overflow: hidden')}>
+                {samples.length === 0 ? (
+                  <div style={css('height: 100%; display: flex; align-items: center; justify-content: center')}><MascotSpinner /></div>
+                ) : (
                 <svg viewBox="0 0 900 280" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
                   {v.gridLines.map((g) => (
                     <line key={g.value} x1="0" y1={g.y} x2="900" y2={g.y} stroke="#9a9081" strokeWidth={g.value === 0 ? 2 : 1} opacity={g.value === 0 ? 0.6 : 0.18} />
@@ -340,6 +344,7 @@ export default function Dashboard() {
                   <path d={v.linePath} fill="none" stroke="#56633f" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
                   <path d={v.spikePath} fill="none" stroke="#c67139" strokeWidth="3" strokeLinejoin="round" />
                 </svg>
+                )}
               </div>
             </div>
             <div style={css('display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--color-neutral-600); font-family: ui-monospace, monospace')}>
