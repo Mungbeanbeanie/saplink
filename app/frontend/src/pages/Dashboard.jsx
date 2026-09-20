@@ -431,7 +431,7 @@ export default function Dashboard() {
           <div className="card elev-md" style={css('grid-column: 1 / -1; border-radius: var(--radius-lg); padding: 26px clamp(18px, 2.5vw, 30px); position: relative')}>
             <div className="flex flex-wrap items-start justify-between gap-3.5" style={css('margin-bottom: 14px; padding-top: 32px')}>
               <div>
-                <h2 className="card-title" style={css('margin: 0; font-size: 26px')}><FadeWords text="Electrical activity" /></h2>
+                <h2 className="card-title" style={css('margin: 0; font-size: 26px')}><span style={css('color: #c7dd57')}><FadeWords text="Electrical" delayOffset={98} /></span><FadeWords text=" activity" /></h2>
                 <p className="card-body" style={css('margin: 4px 0 0; font-size: 14px')}><FadeWords delayOffset={40} text="The line shows the plant’s signal strength in millivolts, already measured relative to its own resting point." /></p>
               </div>
               <div className="flex items-center gap-2.5" style={css('position: absolute; top: 22px; right: 18px')}>
