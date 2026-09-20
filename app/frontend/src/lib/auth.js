@@ -18,6 +18,7 @@ const listeners = new Set();
 function configured() {
   return !!CLIENT_ID;
 }
+export const isConfigured = configured;
 
 function notify() { listeners.forEach((fn) => fn()); }
 
