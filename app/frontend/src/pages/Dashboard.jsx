@@ -12,6 +12,7 @@ import { apiFetch } from '../lib/api.js';
 import { useNews } from '../lib/news.js';
 import { useNetwork } from '../lib/network.js';
 import { useStatusHistory } from '../lib/statusHistory.js';
+import { useWeather } from '../lib/weather.js';
 
 // Site-map graph: every node is a real device from /api/network, laid out on
 // a fixed schematic grid -- there's no real per-router GPS/site-layout data
@@ -81,6 +82,7 @@ export default function Dashboard() {
   // tab list once /api/health answers.
   const [device, setDevice] = useState(() => searchParams.get('device') || 'sense-1');
   const statusHours = useStatusHistory(device);
+  const weather = useWeather();
   const [samples, setSamples] = useState([]);
   const [baseline, setBaseline] = useState(42);
   const [src, setSrc] = useState('sim');
@@ -453,8 +455,12 @@ export default function Dashboard() {
                 <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{soilMv != null ? soilMv.toFixed(0) + ' mV' : '—'}</div>
                 <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Soil moisture (raw)</div>
               </div>
+              <div style={css('display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-neutral-200); min-width: 0')}>
+                <div style={css('font-family: var(--font-heading); font-size: 24px; line-height: 1.1')}>{weather.ok && weather.temperature_f != null ? Math.round(weather.temperature_f) + '°F' : '—'}</div>
+                <div style={css('font-size: 13px; color: var(--color-neutral-700); margin-top: 3px')}>Outdoor temp (Blacksburg)</div>
+              </div>
             </div>
-            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>Air humidity, temperature and light aren't measured yet — no sensor for them exists in the hardware.</p>
+            <p style={css('margin: 0; font-size: 13px; color: var(--color-neutral-600)')}>Air humidity and light aren't measured yet — no sensor for either exists in the hardware. Temperature above is Blacksburg's current outdoor weather from a public feed, not a reading from the plant's own sensors.</p>
           </div>
 
           <div className="card elev-sm" style={css('border-radius: var(--radius-lg); padding: 26px; display: flex; flex-direction: column; gap: 14px')}>
